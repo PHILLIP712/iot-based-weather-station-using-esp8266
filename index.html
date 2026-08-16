@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IoT Weather Station & Advisory Engine</title>
+  <title>IoT Weather Station, Vector Compass & Logger</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #070d19; color: #f8fafc; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
@@ -12,7 +12,7 @@
     .status { font-size: 0.8rem; color: #94a3b8; margin-bottom: 12px; }
     .status.online { color: #10b981; }
 
-    /* Environmental Advisory & Hazard Banner */
+    /* Advisory & Hazard Banner */
     .advisory-box { width: 100%; max-width: 840px; box-sizing: border-box; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
     .advisory-box.normal { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; }
     .advisory-box.caution { background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; }
@@ -20,12 +20,23 @@
     .advisory-top { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; }
     .advisory-msg { font-size: 0.9rem; color: #f1f5f9; font-weight: 400; line-height: 1.4; }
 
-    .solar-banner { background: linear-gradient(135deg, #1e1b4b, #0f172a); border-radius: 12px; padding: 14px 20px; width: 100%; max-width: 840px; box-sizing: border-box; margin-bottom: 16px; border: 1px solid rgba(139, 92, 246, 0.3); display: flex; flex-direction: column; gap: 10px; }
+    /* Interactive Vector Wind Compass & Sun Container */
+    .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 840px; margin-bottom: 16px; }
+    @media (max-width: 680px) { .feature-grid { grid-template-columns: 1fr; } }
+    
+    .solar-banner { background: linear-gradient(135deg, #1e1b4b, #0f172a); border-radius: 12px; padding: 14px 18px; box-sizing: border-box; border: 1px solid rgba(139, 92, 246, 0.3); display: flex; flex-direction: column; justify-content: space-between; gap: 10px; }
     .solar-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
     .solar-badge { padding: 3px 8px; border-radius: 6px; font-weight: 600; font-size: 0.75rem; background: rgba(234, 179, 8, 0.2); color: #fbbf24; }
     .solar-track { position: relative; width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; }
     .solar-progress { height: 100%; width: 0%; background: linear-gradient(90deg, #f59e0b, #fbbf24); transition: width 0.5s ease; border-radius: 4px; }
     .solar-times { display: flex; justify-content: space-between; font-size: 0.8rem; color: #94a3b8; }
+
+    .compass-card { background: #0f172a; border-radius: 12px; padding: 14px 18px; box-sizing: border-box; border: 1px solid rgba(56, 189, 248, 0.25); display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+    .compass-svg { width: 90px; height: 90px; flex-shrink: 0; transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .compass-meta { display: flex; flex-direction: column; gap: 4px; flex-grow: 1; }
+    .compass-title { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; }
+    .compass-val { font-size: 1.25rem; font-weight: 700; color: #38bdf8; }
+    .compass-sub { font-size: 0.8rem; color: #cbd5e1; }
 
     .forecast-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; width: 100%; max-width: 840px; margin-bottom: 16px; }
     .fc-card { background: #0f172a; border-radius: 12px; padding: 14px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
@@ -41,11 +52,18 @@
     .card .label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px; }
     .card .value { font-size: 1.35rem; font-weight: 700; color: #f1f5f9; }
     .card .unit { font-size: 0.8rem; color: #64748b; margin-left: 2px; font-weight: 400; }
-    .chart-box { background: #0f172a; border-radius: 14px; padding: 20px; width: 100%; max-width: 840px; box-sizing: border-box; box-shadow: 0 15px 30px -5px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.06); }
+
+    .chart-box { background: #0f172a; border-radius: 14px; padding: 20px; width: 100%; max-width: 840px; box-sizing: border-box; box-shadow: 0 15px 30px -5px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.06); margin-bottom: 16px; }
     .legend { display: flex; gap: 20px; justify-content: center; font-size: 0.85rem; margin-bottom: 15px; font-weight: 500; }
     .legend span { display: flex; align-items: center; gap: 6px; }
     .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-    canvas { width: 100%; height: 240px; display: block; }
+    canvas { width: 100%; height: 220px; display: block; }
+
+    /* Export Bar */
+    .action-bar { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 840px; box-sizing: border-box; }
+    .btn-export { background: #1e293b; border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
+    .btn-export:hover { background: #38bdf8; color: #070d19; }
+    .log-count { font-size: 0.8rem; color: #64748b; }
   </style>
 </head>
 <body>
@@ -66,18 +84,39 @@
     <div class="advisory-msg" id="advisoryText">Atmospheric metrics within safe recreational thresholds.</div>
   </div>
 
-  <!-- Sun Ephemeris Banner -->
-  <div class="solar-banner">
-    <div class="solar-header">
-      <span>☀️ <b>Solar Ephemeris</b> (Daylight: <span id="daylightVal">--</span> hrs)</span>
-      <span class="solar-badge" id="sunPhaseBadge">Tracking...</span>
+  <!-- Sun & Wind Vector Dual Container -->
+  <div class="feature-grid">
+    <!-- Sun Ephemeris -->
+    <div class="solar-banner">
+      <div class="solar-header">
+        <span>☀️ <b>Solar Ephemeris</b> (<span id="daylightVal">--</span> hrs)</span>
+        <span class="solar-badge" id="sunPhaseBadge">Tracking...</span>
+      </div>
+      <div class="solar-track"><div class="solar-progress" id="sunProgressBar"></div></div>
+      <div class="solar-times">
+        <span>🌅 <b id="sunriseVal">--:--</b></span>
+        <span>🌇 <b id="sunsetVal">--:--</b></span>
+      </div>
     </div>
-    <div class="solar-track">
-      <div class="solar-progress" id="sunProgressBar"></div>
-    </div>
-    <div class="solar-times">
-      <span>🌅 Sunrise: <b id="sunriseVal">--:--</b></span>
-      <span>🌇 Sunset: <b id="sunsetVal">--:--</b></span>
+
+    <!-- Interactive Compass Rose -->
+    <div class="compass-card">
+      <svg class="compass-svg" id="compassRose" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="45" fill="#1e293b" stroke="#334155" stroke-width="2"/>
+        <text x="50" y="16" fill="#f43f5e" font-size="10" font-weight="bold" text-anchor="middle">N</text>
+        <text x="86" y="54" fill="#64748b" font-size="9" text-anchor="middle">E</text>
+        <text x="50" y="90" fill="#64748b" font-size="9" text-anchor="middle">S</text>
+        <text x="14" y="54" fill="#64748b" font-size="9" text-anchor="middle">W</text>
+        <!-- Needle -->
+        <polygon points="50,18 45,50 55,50" fill="#f43f5e"/>
+        <polygon points="50,82 45,50 55,50" fill="#64748b"/>
+        <circle cx="50" cy="50" r="4" fill="#0f172a" stroke="#38bdf8" stroke-width="2"/>
+      </svg>
+      <div class="compass-meta">
+        <div class="compass-title">Wind Vector</div>
+        <div class="compass-val" id="compassHeading">--° (N)</div>
+        <div class="compass-sub" id="compassSpeedDesc">0.0 km/h &bull; Calm</div>
+      </div>
     </div>
   </div>
 
@@ -88,6 +127,7 @@
     <div class="fc-card"><div class="fc-date">Day After</div><div class="fc-cond">--</div><div class="fc-temp">--° / --°</div><div class="fc-pop">💧 Rain: --%</div></div>
   </div>
 
+  <!-- Core Metric Grid -->
   <div class="grid">
     <div class="card highlight"><div class="label">Condition</div><div class="value" style="font-size:1.05rem;" id="cond">--</div></div>
     <div class="card"><div class="label">Temperature</div><div class="value"><span id="temp">--</span><span class="unit">&deg;C</span></div></div>
@@ -101,6 +141,7 @@
     <div class="card"><div class="label">Cloud Cover</div><div class="value"><span id="clouds">--</span><span class="unit">%</span></div></div>
   </div>
 
+  <!-- Spline Chart -->
   <div class="chart-box">
     <div class="legend">
       <span><span class="dot" style="background:#f43f5e; box-shadow: 0 0 8px #f43f5e;"></span> Temp (°C)</span>
@@ -110,20 +151,54 @@
     <canvas id="splineCanvas"></canvas>
   </div>
 
+  <!-- Historical Logger & CSV Exporter -->
+  <div class="action-bar">
+    <span class="log-count" id="logCounter">0 telemetry frames logged</span>
+    <button class="btn-export" onclick="exportHistoricalCSV()">📥 Download CSV Log</button>
+  </div>
+
   <script>
     var MQTT_TOPIC = "arpan_weather_station/state";
     var maxPoints = 30;
     var tempData = [], humData = [], aqiData = [], timeLabels = [];
+    var telemetryLog = []; // Stores complete session history for CSV export
 
     var canvas = document.getElementById("splineCanvas");
     var ctx = canvas.getContext("2d");
 
     function resizeCanvas() {
       canvas.width = canvas.parentElement.clientWidth - 40;
-      canvas.height = 240;
+      canvas.height = 220;
       drawGlowingSplineChart();
     }
     window.addEventListener("resize", resizeCanvas);
+
+    function getCardinal(angle) {
+      var val = Math.floor((angle / 22.5) + 0.5);
+      var arr = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"];
+      return arr[(val % 16)];
+    }
+
+    function getBeaufortScale(kmh) {
+      if (kmh < 1) return "Calm";
+      if (kmh < 6) return "Light Air";
+      if (kmh < 12) return "Light Breeze";
+      if (kmh < 20) return "Gentle Breeze";
+      if (kmh < 29) return "Moderate Breeze";
+      if (kmh < 39) return "Fresh Breeze";
+      if (kmh < 50) return "Strong Breeze";
+      return "Gale / High Wind";
+    }
+
+    function updateCompass(dir, speed) {
+      var rose = document.getElementById("compassRose");
+      var head = document.getElementById("compassHeading");
+      var desc = document.getElementById("compassSpeedDesc");
+
+      rose.style.transform = "rotate(" + dir + "deg)";
+      head.innerText = dir + "° (" + getCardinal(dir) + ")";
+      desc.innerText = speed.toFixed(1) + " km/h • " + getBeaufortScale(speed);
+    }
 
     function evaluateAdvisories(d) {
       var box = document.getElementById("advisoryCard");
@@ -304,6 +379,34 @@
       }
     }
 
+    function exportHistoricalCSV() {
+      if (!telemetryLog.length) {
+        alert("No telemetry data captured yet.");
+        return;
+      }
+      var headers = ["Timestamp", "Date", "City", "Condition", "Temperature_C", "FeelsLike_C", "Humidity_Pct", "Pressure_hPa", "WindSpeed_kmh", "WindDir_Deg", "AQI", "PM2_5", "PM10", "UV_Index"];
+      var rows = [headers.join(",")];
+
+      for (var i = 0; i < telemetryLog.length; i++) {
+        var d = telemetryLog[i];
+        var row = [
+          d.time, d.date, '"' + d.city + '"', '"' + d.condition + '"',
+          d.temperature, d.feels_like, d.humidity, d.pressure,
+          d.wind_speed, d.wind_dir, d.aqi, d.pm2_5, d.pm10, d.uv_index
+        ];
+        rows.push(row.join(","));
+      }
+
+      var csvContent = "data:text/csv;charset=utf-8," + rows.join("\n");
+      var encodedUri = encodeURI(csvContent);
+      var link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", "weather_telemetry_" + Date.now() + ".csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
     var client = new Paho.MQTT.Client("broker.emqx.io", 8084, "/mqtt", "webMonitor_" + parseInt(Math.random() * 10000, 10));
 
     client.onConnectionLost = function () {
@@ -339,8 +442,12 @@
         updateSunProgress(d.sunrise, d.sunset, shortTime);
         if (d.forecast) renderForecast(d.forecast);
         
-        // Evaluate dynamic health & weather advisories
         evaluateAdvisories(d);
+        updateCompass(d.wind_dir || 0, d.wind_speed || 0);
+
+        // Store log for CSV export
+        telemetryLog.push(d);
+        document.getElementById("logCounter").innerText = telemetryLog.length + " frames logged";
 
         if (tempData.length >= maxPoints) {
           tempData.shift();
