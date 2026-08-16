@@ -3,9 +3,6 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
 #include <time.h>
 
 // Wi-Fi Credentials
@@ -16,13 +13,6 @@ const char* password = "1234567890";
 const char* mqtt_server = "broker.emqx.io";
 const int mqtt_port = 1883;
 const char* mqtt_topic = "arpan_weather_station/state";
-
-// OLED Configuration
-#define SCREEN_WIDTH 128
-#define SCREEN_HEIGHT 64
-#define OLED_RESET -1
-#define SCREEN_ADDRESS 0x3C
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 // Network Clients
 WiFiClient espClient;
@@ -56,17 +46,12 @@ float pm2_5 = 0.0;
 float pm10 = 0.0;
 String aqiStatus = "Good";
 
-// Timers & Page Management
-int currentPage = 0;
-const int totalPages = 3;
-unsigned long lastPageSwitch = 0;
-const unsigned long pageInterval = 4000;
-
+// Timers
 unsigned long lastWeatherFetch = 0;
-const unsigned long weatherInterval = 30000;
+const unsigned long weatherInterval = 30000; // API fetch every 30 seconds
 
 unsigned long lastMqttPublish = 0;
-const unsigned long mqttInterval = 4000;
+const unsigned long mqttInterval = 1000;     // 1-second real-time MQTT publish rate
 
 String getWeatherDescription(int code) {
   switch (code) {
@@ -124,6 +109,7 @@ void fetchWeatherData() {
   clientSecure.setInsecure();
   HTTPClient https;
 
+  // Weather Endpoint
   String weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=" + String(latitude, 4) +
                       "&longitude=" + String(longitude, 4) +
                       "&current=temperature_2m,relative_humidity_2m,apparent_temperature,surface_pressure,wind_speed_10m,wind_direction_10m,cloud_cover,uv_index,weather_code";
@@ -147,6 +133,7 @@ void fetchWeatherData() {
     https.end();
   }
 
+  // Air Quality Endpoint
   String aqiUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + String(latitude, 4) +
                   "&longitude=" + String(longitude, 4) +
                   "&current=us_aqi,pm10,pm2_5";
@@ -165,11 +152,10 @@ void fetchWeatherData() {
   }
 }
 
-// 24-Hour Format Handler (HH:MM:SS)
 void getFormattedTime(char* timeBuffer, char* dateBuffer) {
   time_t now = time(nullptr);
   struct tm* timeinfo = localtime(&now);
-  strftime(timeBuffer, 10, "%H:%M:%S", timeinfo);  // 24-hour clock
+  strftime(timeBuffer, 10, "%H:%M:%S", timeinfo);
   strftime(dateBuffer, 12, "%d-%b-%Y", timeinfo);
 }
 
@@ -203,87 +189,11 @@ void publishTelemetry() {
   client.publish(mqtt_topic, output.c_str(), true);
 }
 
-void drawPageDots(int active) {
-  int startX = 54;
-  int y = 60;
-  for (int i = 0; i < totalPages; i++) {
-    if (i == active) {
-      display.fillCircle(startX + (i * 10), y, 2, SSD1306_WHITE);
-    } else {
-      display.drawCircle(startX + (i * 10), y, 2, SSD1306_WHITE);
-    }
-  }
-}
-
-void renderOLED() {
-  char timeBuf[10], dateBuf[12];
-  getFormattedTime(timeBuf, dateBuf);
-
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-
-  if (currentPage == 0) {
-    // 24-hour time displayed cleanly with date
-    display.setCursor(0, 0);
-    display.printf("%s  %s", dateBuf, timeBuf);
-    display.drawLine(0, 9, 128, 9, SSD1306_WHITE);
-
-    display.setCursor(0, 13);
-    display.printf("Status: %s", conditionText.c_str());
-
-    display.setCursor(0, 26);
-    display.printf("Temp:   %.1f C", temp);
-
-    display.setCursor(0, 37);
-    display.printf("Feels:  %.1f C", feelsLike);
-
-    display.setCursor(0, 48);
-    display.printf("Humid:  %d %%", humidity);
-
-  } else if (currentPage == 1) {
-    display.setCursor(0, 0);
-    display.printf("AQI: %s, %s", city.c_str(), country.c_str());
-    display.drawLine(0, 9, 128, 9, SSD1306_WHITE);
-
-    display.setCursor(0, 14);
-    display.printf("US AQI: %d", usAqi);
-
-    display.setCursor(0, 26);
-    display.printf("State:  %s", aqiStatus.c_str());
-
-    display.setCursor(0, 38);
-    display.printf("PM2.5:  %.1f ug/m3", pm2_5);
-
-    display.setCursor(0, 49);
-    display.printf("PM10:   %.1f ug/m3", pm10);
-
-  } else if (currentPage == 2) {
-    display.setCursor(0, 0);
-    display.print("Atmosphere & Wind");
-    display.drawLine(0, 9, 128, 9, SSD1306_WHITE);
-
-    display.setCursor(0, 14);
-    display.printf("Press:  %.0f hPa", pressure);
-
-    display.setCursor(0, 26);
-    display.printf("Wind:   %.1f km/h", windSpeed);
-
-    display.setCursor(0, 38);
-    display.printf("Dir:    %d deg", windDirection);
-
-    display.setCursor(0, 49);
-    display.printf("UV: %.1f | Cloud: %d%%", uvIndex, cloudCover);
-  }
-
-  drawPageDots(currentPage);
-  display.display();
-}
-
 void reconnectMqtt() {
   if (!client.connected()) {
     String clientId = "ESP8266-Weather-" + String(random(0xffff), HEX);
     if (client.connect(clientId.c_str())) {
+      Serial.println("Connected to EMQX Broker!");
       publishTelemetry();
     }
   }
@@ -291,36 +201,22 @@ void reconnectMqtt() {
 
 void setup() {
   Serial.begin(115200);
-  Wire.begin(D2, D1);
-
-  display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
-  display.clearDisplay();
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 10);
-  display.println("Connecting WiFi...");
-  display.display();
 
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
+  Serial.println("\nWiFi Connected.");
 
   configTime(IST_OFFSET_SEC, DST_OFFSET_SEC, "pool.ntp.org", "time.google.com");
-
-  display.clearDisplay();
-  display.setCursor(0, 10);
-  display.println("Detecting Location...");
-  display.display();
 
   fetchLocation();
   fetchWeatherData();
 
   client.setServer(mqtt_server, mqtt_port);
   client.setBufferSize(1024);
-  
   reconnectMqtt();
-  renderOLED();
 }
 
 void loop() {
@@ -331,22 +227,13 @@ void loop() {
 
   unsigned long currentMillis = millis();
 
-  if (currentMillis - lastPageSwitch >= pageInterval) {
-    lastPageSwitch = currentMillis;
-    currentPage = (currentPage + 1) % totalPages;
-  }
-
-  static unsigned long lastOledDraw = 0;
-  if (currentMillis - lastOledDraw >= 500) {
-    lastOledDraw = currentMillis;
-    renderOLED();
-  }
-
+  // 1. Publish to Cloud MQTT every 1 second
   if (currentMillis - lastMqttPublish >= mqttInterval) {
     lastMqttPublish = currentMillis;
     publishTelemetry();
   }
 
+  // 2. Fetch fresh Open-Meteo updates every 30 seconds
   if (currentMillis - lastWeatherFetch >= weatherInterval) {
     lastWeatherFetch = currentMillis;
     fetchWeatherData();
