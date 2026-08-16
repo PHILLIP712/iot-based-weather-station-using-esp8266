@@ -129,8 +129,14 @@ void fetchWeatherData() {
 
   if (https.begin(clientSecure, weatherUrl)) {
     if (https.GET() == HTTP_CODE_OK) {
-      DynamicJsonDocument doc(8192);
-      deserializeJson(doc, https.getString());
+      // Memory filter to keep RAM clean
+      StaticJsonDocument<512> filter;
+      filter["current"] = true;
+      filter["daily"] = true;
+      filter["hourly"] = true;
+
+      DynamicJsonDocument doc(10240);
+      deserializeJson(doc, https.getString(), DeserializationOption::Filter(filter));
       
       JsonObject current = doc["current"];
       temp = current["temperature_2m"];
@@ -143,29 +149,29 @@ void fetchWeatherData() {
       weatherCode = current["weather_code"];
       conditionText = getWeatherDescription(weatherCode);
 
-      // 7-Day Forecast Parsing
+      // Parse 7-Day Forecast
       for (int i = 0; i < 7; i++) {
         forecast[i].date = doc["daily"]["time"][i].as<String>();
-        forecast[i].maxTemp = doc["daily"]["temperature_2m_max"][i];
-        forecast[i].minTemp = doc["daily"]["temperature_2m_min"][i];
+        forecast[i].maxTemp = doc["daily"]["temperature_2m_max"][i].as<float>();
+        forecast[i].minTemp = doc["daily"]["temperature_2m_min"][i].as<float>();
         forecast[i].pop = doc["daily"]["precipitation_probability_max"][i] | 0;
-        forecast[i].code = doc["daily"]["weather_code"][i];
+        forecast[i].code = doc["daily"]["weather_code"][i] | 0;
         forecast[i].condition = getWeatherDescription(forecast[i].code);
       }
 
-      // 24-Hour Timeline Parsing
+      // Parse 24-Hour Timeline
       time_t now = time(nullptr);
       struct tm* timeinfo = localtime(&now);
-      int currentHour = timeinfo->tm_hour;
+      int currentHour = (timeinfo->tm_hour >= 0 && timeinfo->tm_hour <= 23) ? timeinfo->tm_hour : 0;
 
       for (int i = 0; i < 24; i++) {
         int idx = currentHour + i;
         if (idx < 168) {
           String rawTime = doc["hourly"]["time"][idx].as<String>();
           hourly[i].time = (rawTime.length() >= 16) ? rawTime.substring(11, 16) : String(idx % 24) + ":00";
-          hourly[i].temp = doc["hourly"]["temperature_2m"][idx];
+          hourly[i].temp = doc["hourly"]["temperature_2m"][idx].as<float>();
           hourly[i].pop = doc["hourly"]["precipitation_probability"][idx] | 0;
-          hourly[i].condition = getWeatherDescription(doc["hourly"]["weather_code"][idx]);
+          hourly[i].condition = getWeatherDescription(doc["hourly"]["weather_code"][idx] | 0);
         }
       }
     }

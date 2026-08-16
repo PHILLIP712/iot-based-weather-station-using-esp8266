@@ -12,7 +12,7 @@
     .status { font-size: 0.8rem; color: #94a3b8; margin-bottom: 12px; }
     .status.online { color: #10b981; }
 
-    /* Real-Time Advisory Box */
+    /* Advisory Box */
     .advisory-box { width: 100%; max-width: 840px; box-sizing: border-box; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
     .advisory-box.normal { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; }
     .advisory-box.caution { background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; }
@@ -35,8 +35,8 @@
     /* 7-Day Forecast Grid */
     .forecast-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 8px; width: 100%; max-width: 840px; margin-bottom: 16px; }
     .fc-card { background: #0f172a; border-radius: 10px; padding: 10px 8px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
-    .fc-date { font-size: 0.75rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; }
-    .fc-cond { font-size: 0.75rem; font-weight: 600; color: #38bdf8; min-height: 28px; display: flex; align-items: center; }
+    .fc-date { font-size: 0.75rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; }
+    .fc-cond { font-size: 0.75rem; font-weight: 600; color: #38bdf8; min-height: 28px; display: flex; align-items: center; justify-content: center; }
     .fc-temp { font-size: 0.95rem; font-weight: 700; color: #f1f5f9; }
     .fc-pop { font-size: 0.7rem; color: #60a5fa; }
 
@@ -73,7 +73,6 @@
   </div>
   <div class="status" id="connStatus">Connecting to Cloud Broker...</div>
 
-  <!-- Real-Time Advisory Engine Banner -->
   <div class="advisory-box normal" id="advisoryCard">
     <div class="advisory-top">
       <span id="advisoryTitle">🛡️ Environmental Status: Optimal</span>
@@ -82,7 +81,6 @@
     <div class="advisory-msg" id="advisoryText">Atmospheric metrics within safe recreational thresholds.</div>
   </div>
 
-  <!-- 24-Hour Hourly Scroller -->
   <div class="hourly-container">
     <div class="hourly-title">
       <span>⏱️ 24-Hour Forecast Timeline</span>
@@ -93,10 +91,8 @@
     </div>
   </div>
 
-  <!-- 7-Day Forecast Section -->
   <div class="forecast-grid" id="forecastDeck"></div>
 
-  <!-- Core Metric Grid -->
   <div class="grid">
     <div class="card highlight"><div class="label">Condition</div><div class="value" style="font-size:1.05rem;" id="cond">--</div></div>
     <div class="card"><div class="label">Temperature</div><div class="value"><span id="temp">--</span><span class="unit">&deg;C</span></div></div>
@@ -112,7 +108,6 @@
     <div class="card"><div class="label">Cloud Cover</div><div class="value"><span id="clouds">--</span><span class="unit">%</span></div></div>
   </div>
 
-  <!-- Spline Chart -->
   <div class="chart-box">
     <div class="legend">
       <span><span class="dot" style="background:#f43f5e; box-shadow: 0 0 8px #f43f5e;"></span> Temp (°C)</span>
@@ -122,7 +117,6 @@
     <canvas id="splineCanvas"></canvas>
   </div>
 
-  <!-- Historical Logger & CSV Exporter -->
   <div class="action-bar">
     <span class="log-count" id="logCounter">0 telemetry frames logged</span>
     <button class="btn-export" onclick="exportHistoricalCSV()">📥 Download CSV Log</button>
@@ -153,7 +147,7 @@
         var isNow = (i === 0) ? " now" : "";
         html += '<div class="hour-pill' + isNow + '">' +
                 '<div class="hour-time">' + (i === 0 ? "Now" : h.time) + '</div>' +
-                '<div class="hour-temp">' + h.temp.toFixed(0) + '&deg;</div>' +
+                '<div class="hour-temp">' + Math.round(h.temp) + '&deg;</div>' +
                 '<div class="hour-pop">💧 ' + h.pop + '%</div>' +
                 '</div>';
       }
@@ -166,13 +160,27 @@
       var html = "";
       for (var i = 0; i < fcArray.length; i++) {
         var d = fcArray[i];
-        var dateObj = new Date(d.date);
-        var dayLabel = (i === 0) ? "Today" : (i === 1 ? "Tmrw" : days[dateObj.getDay()]);
+        var dayLabel;
+        if (i === 0) {
+          dayLabel = "Today";
+        } else if (i === 1) {
+          dayLabel = "Tmrw";
+        } else {
+          // Safe local date parsing
+          var parts = (d.date || "").split("-");
+          if (parts.length === 3) {
+            var dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            dayLabel = days[dt.getDay()];
+          } else {
+            dayLabel = "Day " + (i + 1);
+          }
+        }
+
         html += '<div class="fc-card">' +
                 '<div class="fc-date">' + dayLabel + '</div>' +
-                '<div class="fc-cond">' + d.cond + '</div>' +
-                '<div class="fc-temp">' + d.max.toFixed(0) + '&deg; / ' + d.min.toFixed(0) + '&deg;</div>' +
-                '<div class="fc-pop">💧 ' + d.pop + '%</div>' +
+                '<div class="fc-cond">' + (d.cond || "--") + '</div>' +
+                '<div class="fc-temp">' + Math.round(d.max) + '&deg; / ' + Math.round(d.min) + '&deg;</div>' +
+                '<div class="fc-pop">💧 ' + (d.pop || 0) + '%</div>' +
                 '</div>';
       }
       document.getElementById("forecastDeck").innerHTML = html;
