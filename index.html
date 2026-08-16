@@ -62,7 +62,7 @@
     .legend span { display: flex; align-items: center; gap: 5px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
-    canvas { width: 100%; height: 230px; display: block; }
+    canvas { width: 100%; height: 240px; display: block; }
 
     /* Action Bar */
     .action-bar { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 840px; box-sizing: border-box; }
@@ -166,7 +166,7 @@
 
     function resizeCanvas() {
       canvas.width = canvas.parentElement.clientWidth - 40;
-      canvas.height = 230;
+      canvas.height = 240;
       drawGlowingSplineChart();
     }
     window.addEventListener("resize", resizeCanvas);
@@ -318,11 +318,11 @@
       }
     }
 
-    function drawSpline(data, minScale, maxScale, strokeColor, glowColor, fillTopColor, fillBottomColor, leftPad) {
+    function drawSpline(data, minScale, maxScale, strokeColor, glowColor, fillTopColor, fillBottomColor, leftPad, unitSuffix) {
       if (data.length < 2) return;
 
       var bottomPad = 25;
-      var topPad = 15;
+      var topPad = 20;
       var graphHeight = canvas.height - bottomPad - topPad;
       var graphWidth = canvas.width - leftPad;
       var step = graphWidth / (maxPoints - 1);
@@ -333,9 +333,10 @@
         norm = Math.max(0, Math.min(1, norm));
         var x = leftPad + (i * step);
         var y = topPad + graphHeight - (norm * graphHeight);
-        points.push({ x: x, y: y });
+        points.push({ x: x, y: y, val: data[i] });
       }
 
+      // Shaded Area Gradient Fill
       ctx.save();
       var areaGrad = ctx.createLinearGradient(0, topPad, 0, topPad + graphHeight);
       areaGrad.addColorStop(0, fillTopColor);
@@ -356,6 +357,7 @@
       ctx.fill();
       ctx.restore();
 
+      // Glowing Curve Line
       ctx.save();
       ctx.shadowColor = glowColor;
       ctx.shadowBlur = 10;
@@ -371,11 +373,35 @@
       }
       ctx.stroke();
 
-      var lastPt = points[points.length - 1];
-      ctx.fillStyle = strokeColor;
-      ctx.beginPath();
-      ctx.arc(lastPt.x, lastPt.y, 4, 0, Math.PI * 2);
-      ctx.fill();
+      // Draw Exact Number Labels on Data Points
+      ctx.font = "bold 9px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+
+      for (var i = 0; i < points.length; i++) {
+        var pt = points[i];
+        
+        // Dot marker
+        ctx.fillStyle = strokeColor;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, (i === points.length - 1 ? 4.5 : 3), 0, Math.PI * 2);
+        ctx.fill();
+
+        // Display numbers on every 3rd point and the most recent live point
+        if (i % 3 === 0 || i === points.length - 1) {
+          var valText = (typeof pt.val === "number") ? (pt.val % 1 !== 0 ? pt.val.toFixed(1) : pt.val.toFixed(0)) : pt.val;
+          if (unitSuffix) valText += unitSuffix;
+
+          // Number Badge Background
+          var textWidth = ctx.measureText(valText).width;
+          ctx.fillStyle = "rgba(7, 13, 25, 0.85)";
+          ctx.fillRect(pt.x - (textWidth / 2) - 3, pt.y - 17, textWidth + 6, 12);
+
+          // Number Text
+          ctx.fillStyle = strokeColor;
+          ctx.fillText(valText, pt.x, pt.y - 6);
+        }
+      }
       ctx.restore();
     }
 
@@ -384,12 +410,11 @@
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       var bottomPad = 25;
-      var topPad = 15;
-      var leftPad = 45; // Reserved gutter for Left Y-Axis numbers
+      var topPad = 20;
+      var leftPad = 48; // Gutter for Y-Axis numbers
       var graphHeight = canvas.height - bottomPad - topPad;
       var graphWidth = canvas.width - leftPad;
 
-      // Determine scale range based on active mode
       var minVal = 0, maxVal = 100, unitLabel = "%";
       if (activeChartMode === 'temp') {
         minVal = 0; maxVal = 60; unitLabel = "°C";
@@ -401,11 +426,11 @@
         minVal = 950; maxVal = 1050; unitLabel = "hPa";
       } else if (activeChartMode === 'wind') {
         minVal = 0; maxVal = 60; unitLabel = "km/h";
-      } else { // 'all' tab normalized scale
+      } else {
         minVal = 0; maxVal = 100; unitLabel = "%";
       }
 
-      // Draw Grid Lines and Left Y-Axis Number Labels
+      // Draw Grid Lines & Y-Axis Scale Values
       ctx.font = "10px sans-serif";
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
@@ -413,7 +438,6 @@
       for (var j = 0; j <= 4; j++) {
         var y = topPad + (graphHeight / 4) * j;
         
-        // Grid Line
         ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -421,31 +445,30 @@
         ctx.lineTo(canvas.width, y);
         ctx.stroke();
 
-        // Left Side Y-Axis Number Label
         var val = maxVal - ((maxVal - minVal) / 4) * j;
         ctx.fillStyle = "#64748b";
         ctx.fillText(Math.round(val) + (j === 0 ? " " + unitLabel : ""), leftPad - 8, y);
       }
 
-      // 1. Temperature Curve (0 - 60 °C)
+      // 1. Temperature Curve
       if (activeChartMode === 'all' || activeChartMode === 'temp') {
-        drawSpline(tempData, 0, 60, "#f43f5e", "rgba(244, 63, 94, 0.8)", "rgba(244, 63, 94, 0.25)", "rgba(244, 63, 94, 0.0)", leftPad);
+        drawSpline(tempData, 0, 60, "#f43f5e", "rgba(244, 63, 94, 0.8)", "rgba(244, 63, 94, 0.25)", "rgba(244, 63, 94, 0.0)", leftPad, "°");
       }
-      // 2. Humidity Curve (0 - 100 %)
+      // 2. Humidity Curve
       if (activeChartMode === 'all' || activeChartMode === 'hum') {
-        drawSpline(humData, 0, 100, "#38bdf8", "rgba(56, 189, 248, 0.8)", "rgba(56, 189, 248, 0.20)", "rgba(56, 189, 248, 0.0)", leftPad);
+        drawSpline(humData, 0, 100, "#38bdf8", "rgba(56, 189, 248, 0.8)", "rgba(56, 189, 248, 0.20)", "rgba(56, 189, 248, 0.0)", leftPad, "%");
       }
-      // 3. AQI Curve (0 - 300)
+      // 3. AQI Curve
       if (activeChartMode === 'all' || activeChartMode === 'aqi') {
-        drawSpline(aqiData, 0, 300, "#fbbf24", "rgba(251, 191, 36, 0.8)", "rgba(251, 191, 36, 0.18)", "rgba(251, 191, 36, 0.0)", leftPad);
+        drawSpline(aqiData, 0, 300, "#fbbf24", "rgba(251, 191, 36, 0.8)", "rgba(251, 191, 36, 0.18)", "rgba(251, 191, 36, 0.0)", leftPad, "");
       }
-      // 4. Pressure Curve (950 - 1050 hPa)
+      // 4. Pressure Curve
       if (activeChartMode === 'all' || activeChartMode === 'press') {
-        drawSpline(pressData, 950, 1050, "#c084fc", "rgba(192, 132, 252, 0.8)", "rgba(192, 132, 252, 0.20)", "rgba(192, 132, 252, 0.0)", leftPad);
+        drawSpline(pressData, 950, 1050, "#c084fc", "rgba(192, 132, 252, 0.8)", "rgba(192, 132, 252, 0.20)", "rgba(192, 132, 252, 0.0)", leftPad, "hPa");
       }
-      // 5. Wind Speed Curve (0 - 60 km/h)
+      // 5. Wind Speed Curve
       if (activeChartMode === 'all' || activeChartMode === 'wind') {
-        drawSpline(windData, 0, 60, "#10b981", "rgba(16, 185, 129, 0.8)", "rgba(16, 185, 129, 0.20)", "rgba(16, 185, 129, 0.0)", leftPad);
+        drawSpline(windData, 0, 60, "#10b981", "rgba(16, 185, 129, 0.8)", "rgba(16, 185, 129, 0.20)", "rgba(16, 185, 129, 0.0)", leftPad, "k");
       }
 
       // X-Axis Timestamps
