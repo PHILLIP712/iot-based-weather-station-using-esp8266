@@ -62,7 +62,7 @@
     .legend span { display: flex; align-items: center; gap: 5px; }
     .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 
-    canvas { width: 100%; height: 220px; display: block; }
+    canvas { width: 100%; height: 230px; display: block; }
 
     /* Action Bar */
     .action-bar { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 840px; box-sizing: border-box; }
@@ -138,6 +138,7 @@
       <span><span class="dot" style="background:#38bdf8; box-shadow:0 0 6px #38bdf8;"></span> Humidity (%)</span>
       <span><span class="dot" style="background:#fbbf24; box-shadow:0 0 6px #fbbf24;"></span> AQI</span>
       <span><span class="dot" style="background:#c084fc; box-shadow:0 0 6px #c084fc;"></span> Pressure (hPa)</span>
+      <span><span class="dot" style="background:#10b981; box-shadow:0 0 6px #10b981;"></span> Wind (km/h)</span>
     </div>
     <canvas id="splineCanvas"></canvas>
   </div>
@@ -165,7 +166,7 @@
 
     function resizeCanvas() {
       canvas.width = canvas.parentElement.clientWidth - 40;
-      canvas.height = 220;
+      canvas.height = 230;
       drawGlowingSplineChart();
     }
     window.addEventListener("resize", resizeCanvas);
@@ -317,18 +318,20 @@
       }
     }
 
-    function drawSpline(data, minScale, maxScale, strokeColor, glowColor, fillTopColor, fillBottomColor) {
+    function drawSpline(data, minScale, maxScale, strokeColor, glowColor, fillTopColor, fillBottomColor, leftPad) {
       if (data.length < 2) return;
 
       var bottomPad = 25;
       var topPad = 15;
       var graphHeight = canvas.height - bottomPad - topPad;
-      var step = canvas.width / (maxPoints - 1);
+      var graphWidth = canvas.width - leftPad;
+      var step = graphWidth / (maxPoints - 1);
       var points = [];
+
       for (var i = 0; i < data.length; i++) {
         var norm = (data[i] - minScale) / (maxScale - minScale);
         norm = Math.max(0, Math.min(1, norm));
-        var x = i * step;
+        var x = leftPad + (i * step);
         var y = topPad + graphHeight - (norm * graphHeight);
         points.push({ x: x, y: y });
       }
@@ -382,45 +385,75 @@
 
       var bottomPad = 25;
       var topPad = 15;
+      var leftPad = 45; // Reserved gutter for Left Y-Axis numbers
       var graphHeight = canvas.height - bottomPad - topPad;
+      var graphWidth = canvas.width - leftPad;
 
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
-      ctx.lineWidth = 1;
+      // Determine scale range based on active mode
+      var minVal = 0, maxVal = 100, unitLabel = "%";
+      if (activeChartMode === 'temp') {
+        minVal = 0; maxVal = 60; unitLabel = "°C";
+      } else if (activeChartMode === 'hum') {
+        minVal = 0; maxVal = 100; unitLabel = "%";
+      } else if (activeChartMode === 'aqi') {
+        minVal = 0; maxVal = 300; unitLabel = "";
+      } else if (activeChartMode === 'press') {
+        minVal = 950; maxVal = 1050; unitLabel = "hPa";
+      } else if (activeChartMode === 'wind') {
+        minVal = 0; maxVal = 60; unitLabel = "km/h";
+      } else { // 'all' tab normalized scale
+        minVal = 0; maxVal = 100; unitLabel = "%";
+      }
+
+      // Draw Grid Lines and Left Y-Axis Number Labels
+      ctx.font = "10px sans-serif";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+
       for (var j = 0; j <= 4; j++) {
         var y = topPad + (graphHeight / 4) * j;
+        
+        // Grid Line
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(0, y);
+        ctx.moveTo(leftPad, y);
         ctx.lineTo(canvas.width, y);
         ctx.stroke();
+
+        // Left Side Y-Axis Number Label
+        var val = maxVal - ((maxVal - minVal) / 4) * j;
+        ctx.fillStyle = "#64748b";
+        ctx.fillText(Math.round(val) + (j === 0 ? " " + unitLabel : ""), leftPad - 8, y);
       }
 
       // 1. Temperature Curve (0 - 60 °C)
       if (activeChartMode === 'all' || activeChartMode === 'temp') {
-        drawSpline(tempData, 0, 60, "#f43f5e", "rgba(244, 63, 94, 0.8)", "rgba(244, 63, 94, 0.25)", "rgba(244, 63, 94, 0.0)");
+        drawSpline(tempData, 0, 60, "#f43f5e", "rgba(244, 63, 94, 0.8)", "rgba(244, 63, 94, 0.25)", "rgba(244, 63, 94, 0.0)", leftPad);
       }
       // 2. Humidity Curve (0 - 100 %)
       if (activeChartMode === 'all' || activeChartMode === 'hum') {
-        drawSpline(humData, 0, 100, "#38bdf8", "rgba(56, 189, 248, 0.8)", "rgba(56, 189, 248, 0.20)", "rgba(56, 189, 248, 0.0)");
+        drawSpline(humData, 0, 100, "#38bdf8", "rgba(56, 189, 248, 0.8)", "rgba(56, 189, 248, 0.20)", "rgba(56, 189, 248, 0.0)", leftPad);
       }
       // 3. AQI Curve (0 - 300)
       if (activeChartMode === 'all' || activeChartMode === 'aqi') {
-        drawSpline(aqiData, 0, 300, "#fbbf24", "rgba(251, 191, 36, 0.8)", "rgba(251, 191, 36, 0.18)", "rgba(251, 191, 36, 0.0)");
+        drawSpline(aqiData, 0, 300, "#fbbf24", "rgba(251, 191, 36, 0.8)", "rgba(251, 191, 36, 0.18)", "rgba(251, 191, 36, 0.0)", leftPad);
       }
-      // 4. Pressure Curve (950 - 1050 hPa) - Now visible in 'All'
+      // 4. Pressure Curve (950 - 1050 hPa)
       if (activeChartMode === 'all' || activeChartMode === 'press') {
-        drawSpline(pressData, 950, 1050, "#c084fc", "rgba(192, 132, 252, 0.8)", "rgba(192, 132, 252, 0.20)", "rgba(192, 132, 252, 0.0)");
+        drawSpline(pressData, 950, 1050, "#c084fc", "rgba(192, 132, 252, 0.8)", "rgba(192, 132, 252, 0.20)", "rgba(192, 132, 252, 0.0)", leftPad);
       }
       // 5. Wind Speed Curve (0 - 60 km/h)
-      if (activeChartMode === 'wind') {
-        drawSpline(windData, 0, 60, "#34d399", "rgba(52, 211, 153, 0.8)", "rgba(52, 211, 153, 0.25)", "rgba(52, 211, 153, 0.0)");
+      if (activeChartMode === 'all' || activeChartMode === 'wind') {
+        drawSpline(windData, 0, 60, "#10b981", "rgba(16, 185, 129, 0.8)", "rgba(16, 185, 129, 0.20)", "rgba(16, 185, 129, 0.0)", leftPad);
       }
 
+      // X-Axis Timestamps
       ctx.fillStyle = "#64748b";
-      ctx.font = "10px sans-serif";
       ctx.textAlign = "center";
-      var step = canvas.width / (maxPoints - 1);
+      var step = graphWidth / (maxPoints - 1);
       for (var i = 0; i < timeLabels.length; i += 5) {
-        ctx.fillText(timeLabels[i], i * step, canvas.height - 6);
+        ctx.fillText(timeLabels[i], leftPad + (i * step), canvas.height - 6);
       }
     }
 
