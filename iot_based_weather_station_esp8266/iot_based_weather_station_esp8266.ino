@@ -28,7 +28,7 @@ String country = "";
 float latitude = 0.0;
 float longitude = 0.0;
 
-// Current Meteorological Telemetry
+// Meteorological Telemetry
 float temp = 0.0, feelsLike = 0.0, pressure = 0.0, windSpeed = 0.0, uvIndex = 0.0;
 int humidity = 0, cloudCover = 0, weatherCode = 0;
 String conditionText = "Updating...";

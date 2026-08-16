@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IoT Weather Station - 24H Timeline & 7-Day Forecast</title>
+  <title>Live IoT Weather & Environmental Station</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #070d19; color: #f8fafc; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
@@ -231,32 +231,48 @@
       var alerts = [];
       var level = "normal";
 
+      // 1. Rain, Drizzle & Severe Weather Detection
+      var cond = (d.condition || "").toLowerCase();
+      if (cond.includes("thunderstorm")) {
+        level = "hazard";
+        alerts.push("⚡ Thunderstorm Alert: Lightning and sudden wind gusts possible. Seek indoor shelter.");
+      } else if (cond.includes("heavy rain") || cond.includes("rain")) {
+        if (level !== "hazard") level = "caution";
+        alerts.push("🌧️ Precipitation Active: Rain showers reported. Carry an umbrella or rain gear.");
+      } else if (cond.includes("drizzle")) {
+        if (level !== "hazard") level = "caution";
+        alerts.push("🌦️ Light Drizzle: Surface roads may be slick. Waterproof protection recommended.");
+      }
+
+      // 2. Air Pollution Alerts
       if (d.aqi > 200 || d.pm2_5 > 75) {
         level = "hazard";
-        alerts.push("⚠️ Severe Air Pollution: Limit outdoor activities. Sensitive groups wear N95 filtration.");
+        alerts.push("⚠️ Severe Air Pollution: Limit outdoor exertion. Sensitive individuals wear N95 masks.");
       } else if (d.aqi > 100 || d.pm2_5 > 35) {
         if (level !== "hazard") level = "caution";
-        alerts.push("😷 Moderate Air Quality: Sensitive individuals should reduce prolonged outdoor exertion.");
+        alerts.push("😷 Moderate Air Quality: Sensitive groups should reduce prolonged outdoor exposure.");
       }
 
-      if (d.feels_like > 40) {
+      // 3. Adjusted Heat Index Thresholds (Realistic tropical thresholds)
+      if (d.feels_like > 42) {
         level = "hazard";
-        alerts.push("🔥 Extreme Heat Exhaustion Risk: Stay hydrated and avoid peak direct sunlight.");
-      } else if (d.feels_like > 35) {
+        alerts.push("🔥 Extreme Heat Exhaustion Risk: Stay hydrated and avoid direct sun exposure.");
+      } else if (d.feels_like > 38) {
         if (level !== "hazard") level = "caution";
-        alerts.push("☀️ Elevated Heat Index: Maintain hydration during outdoor exposure.");
+        alerts.push("☀️ Elevated Heat Index: Maintain regular fluid intake.");
       }
 
+      // 4. UV & Wind Alerts
       if (d.uv_index >= 8) {
         if (level !== "hazard") level = "caution";
         alerts.push("🧴 Very High UV Index: SPF 50+ sunscreen, sunglasses, and shade strongly advised.");
       }
-
       if (d.wind_speed > 45) {
         level = "hazard";
         alerts.push("💨 High Wind Warning: Secure lightweight outdoor fixtures.");
       }
 
+      // Render Box
       if (alerts.length === 0) {
         box.className = "advisory-box normal";
         title.innerText = "🛡️ Environmental Status: Optimal";
