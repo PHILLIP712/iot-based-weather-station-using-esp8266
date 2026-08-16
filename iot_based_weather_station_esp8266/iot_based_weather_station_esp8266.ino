@@ -55,10 +55,10 @@ DayForecast forecast[3];
 
 // Timers
 unsigned long lastWeatherFetch = 0;
-const unsigned long weatherInterval = 30000; // API fetch every 30 seconds
+const unsigned long weatherInterval = 30000;
 
 unsigned long lastMqttPublish = 0;
-const unsigned long mqttInterval = 1000;     // 1-second real-time MQTT stream
+const unsigned long mqttInterval = 1000;
 
 String getWeatherDescription(int code) {
   switch (code) {
@@ -190,6 +190,8 @@ void publishTelemetry() {
   DynamicJsonDocument doc(2048);
   doc["city"] = city;
   doc["country"] = country;
+  doc["lat"] = latitude;
+  doc["lon"] = longitude;
   doc["time"] = String(timeBuf) + " IST";
   doc["date"] = String(dateBuf);
   doc["temperature"] = temp;

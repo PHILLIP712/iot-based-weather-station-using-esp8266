@@ -3,8 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IoT Weather Station, Barometric Altimeter & Logger</title>
+  <title>IoT Weather Station & Live Radar Map</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+  <!-- Leaflet CSS & JS for Live Radar Map -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #070d19; color: #f8fafc; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
     h1 { font-size: 1.5rem; margin-bottom: 4px; color: #38bdf8; letter-spacing: -0.5px; }
@@ -57,6 +60,11 @@
     .legend span { display: flex; align-items: center; gap: 6px; }
     .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
     canvas { width: 100%; height: 220px; display: block; }
+
+    /* Radar Map Container */
+    .map-box { background: #0f172a; border-radius: 14px; padding: 16px; width: 100%; max-width: 840px; box-sizing: border-box; box-shadow: 0 15px 30px -5px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.06); margin-bottom: 16px; }
+    .map-title { font-size: 0.9rem; font-weight: 600; color: #38bdf8; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+    #weatherMap { width: 100%; height: 280px; border-radius: 10px; }
 
     .action-bar { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 840px; box-sizing: border-box; }
     .btn-export { background: #1e293b; border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
@@ -122,7 +130,7 @@
     <div class="fc-card"><div class="fc-date">Day After</div><div class="fc-cond">--</div><div class="fc-temp">--° / --°</div><div class="fc-pop">💧 Rain: --%</div></div>
   </div>
 
-  <!-- Core Metric Grid with Altimeter & Barometric Trend -->
+  <!-- Core Metric Grid -->
   <div class="grid">
     <div class="card highlight"><div class="label">Condition</div><div class="value" style="font-size:1.05rem;" id="cond">--</div></div>
     <div class="card"><div class="label">Temperature</div><div class="value"><span id="temp">--</span><span class="unit">&deg;C</span></div></div>
@@ -136,6 +144,15 @@
     <div class="card"><div class="label">Wind Speed</div><div class="value"><span id="wind">--</span><span class="unit">km/h</span></div></div>
     <div class="card"><div class="label">UV Index</div><div class="value"><span id="uv">--</span></div></div>
     <div class="card"><div class="label">Cloud Cover</div><div class="value"><span id="clouds">--</span><span class="unit">%</span></div></div>
+  </div>
+
+  <!-- Live Doppler Precipitation Map -->
+  <div class="map-box">
+    <div class="map-title">
+      <span>🛰️ Live Doppler Rain Radar & Station Pin</span>
+      <span style="font-size:0.75rem; color:#94a3b8;">RainViewer Layer Active</span>
+    </div>
+    <div id="weatherMap"></div>
   </div>
 
   <!-- Spline Chart -->
@@ -161,6 +178,49 @@
     var telemetryLog = [];
     var initialPressure = null;
 
+    // Initialize Leaflet Dark Map & RainViewer Overlay
+    var map = L.map('weatherMap', { attributionControl: false }).setView([22.5726, 88.3639], 7);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 18 }).addTo(map);
+
+    var radarLayer = null;
+    var stationMarker = null;
+    var mapCentered = false;
+
+    // Load latest RainViewer radar layer
+    fetch('https://api.rainviewer.com/public/weather-maps.json')
+      .then(function(res) { return res.json(); })
+      .then(function(apiData) {
+        if (apiData.radar && apiData.radar.past && apiData.radar.past.length > 0) {
+          var latestFrame = apiData.radar.past[apiData.radar.past.length - 1];
+          radarLayer = L.tileLayer(apiData.host + latestFrame.path + '/256/{z}/{x}/{y}/2/1_1.png', {
+            opacity: 0.75,
+            zIndex: 10
+          }).addTo(map);
+        }
+      })
+      .catch(function(err) { console.error("RainViewer load error:", err); });
+
+    function updateMapLocation(lat, lon, d) {
+      if (!lat || !lon) return;
+      if (!mapCentered) {
+        map.setView([lat, lon], 9);
+        mapCentered = true;
+      }
+      if (!stationMarker) {
+        stationMarker = L.circleMarker([lat, lon], {
+          radius: 8,
+          fillColor: "#38bdf8",
+          color: "#ffffff",
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.9
+        }).addTo(map);
+      } else {
+        stationMarker.setLatLng([lat, lon]);
+      }
+      stationMarker.bindPopup("<b>" + d.city + " Weather Station</b><br>Temp: " + d.temperature.toFixed(1) + "°C<br>AQI: " + d.aqi + " (" + d.aqi_status + ")<br>Condition: " + d.condition);
+    }
+
     var canvas = document.getElementById("splineCanvas");
     var ctx = canvas.getContext("2d");
 
@@ -171,7 +231,6 @@
     }
     window.addEventListener("resize", resizeCanvas);
 
-    // Compute estimated altitude from sea level pressure (1013.25 hPa)
     function calculateAltitude(p) {
       if (!p || p <= 0) return 0;
       return Math.round(44330 * (1 - Math.pow(p / 1013.25, 0.190284)));
@@ -439,11 +498,9 @@
         document.getElementById("uv").innerText = d.uv_index.toFixed(1);
         document.getElementById("clouds").innerText = d.cloud_cover;
 
-        // Calculate and display elevation
         var altVal = calculateAltitude(d.pressure);
         document.getElementById("altitude").innerText = altVal;
 
-        // Calculate Barometric Trend
         if (initialPressure === null) initialPressure = d.pressure;
         var pDiff = d.pressure - initialPressure;
         var trendEl = document.getElementById("baroTrend");
@@ -468,6 +525,11 @@
         
         evaluateAdvisories(d);
         updateCompass(d.wind_dir || 0, d.wind_speed || 0);
+
+        // Update live radar map pin
+        if (d.lat && d.lon) {
+          updateMapLocation(d.lat, d.lon, d);
+        }
 
         telemetryLog.push(d);
         document.getElementById("logCounter").innerText = telemetryLog.length + " frames logged";
