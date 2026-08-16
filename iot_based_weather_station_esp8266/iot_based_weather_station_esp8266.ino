@@ -28,19 +28,15 @@ String country = "";
 float latitude = 0.0;
 float longitude = 0.0;
 
-// Current Meteorological Telemetry
+// Meteorological Telemetry
 float temp = 0.0, feelsLike = 0.0, pressure = 0.0, windSpeed = 0.0, uvIndex = 0.0;
-int humidity = 0, windDirection = 0, cloudCover = 0, weatherCode = 0;
+int humidity = 0, cloudCover = 0, weatherCode = 0;
 String conditionText = "Updating...";
 
 // Air Quality Telemetry
 int usAqi = 0;
 float pm2_5 = 0.0, pm10 = 0.0;
 String aqiStatus = "Good";
-
-// Solar Ephemeris
-String sunriseTime = "--:--", sunsetTime = "--:--";
-float daylightHours = 0.0;
 
 // 7-Day Forecast Structure
 struct DayForecast {
@@ -127,9 +123,9 @@ void fetchWeatherData() {
 
   String weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=" + String(latitude, 4) +
                       "&longitude=" + String(longitude, 4) +
-                      "&current=temperature_2m,relative_humidity_2m,apparent_temperature,surface_pressure,wind_speed_10m,wind_direction_10m,cloud_cover,uv_index,weather_code" +
+                      "&current=temperature_2m,relative_humidity_2m,apparent_temperature,surface_pressure,wind_speed_10m,cloud_cover,uv_index,weather_code" +
                       "&hourly=temperature_2m,precipitation_probability,weather_code" +
-                      "&daily=sunrise,sunset,daylight_duration,temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=Asia%2FKolkata&forecast_days=7";
+                      "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=Asia%2FKolkata&forecast_days=7";
 
   if (https.begin(clientSecure, weatherUrl)) {
     if (https.GET() == HTTP_CODE_OK) {
@@ -142,17 +138,10 @@ void fetchWeatherData() {
       humidity = current["relative_humidity_2m"];
       pressure = current["surface_pressure"];
       windSpeed = current["wind_speed_10m"];
-      windDirection = current["wind_direction_10m"];
       cloudCover = current["cloud_cover"];
       uvIndex = current["uv_index"];
       weatherCode = current["weather_code"];
       conditionText = getWeatherDescription(weatherCode);
-
-      String rawRise = doc["daily"]["sunrise"][0].as<String>();
-      String rawSet = doc["daily"]["sunset"][0].as<String>();
-      if (rawRise.length() >= 16) sunriseTime = rawRise.substring(11, 16);
-      if (rawSet.length() >= 16) sunsetTime = rawSet.substring(11, 16);
-      daylightHours = doc["daily"]["daylight_duration"][0].as<float>() / 3600.0;
 
       // 7-Day Forecast Parsing
       for (int i = 0; i < 7; i++) {
@@ -164,7 +153,7 @@ void fetchWeatherData() {
         forecast[i].condition = getWeatherDescription(forecast[i].code);
       }
 
-      // 24-Hour Hourly Timeline Parsing
+      // 24-Hour Timeline Parsing
       time_t now = time(nullptr);
       struct tm* timeinfo = localtime(&now);
       int currentHour = timeinfo->tm_hour;
@@ -224,7 +213,6 @@ void publishTelemetry() {
   doc["humidity"] = humidity;
   doc["pressure"] = pressure;
   doc["wind_speed"] = windSpeed;
-  doc["wind_dir"] = windDirection;
   doc["cloud_cover"] = cloudCover;
   doc["uv_index"] = uvIndex;
   doc["condition"] = conditionText;
@@ -232,9 +220,6 @@ void publishTelemetry() {
   doc["aqi_status"] = aqiStatus;
   doc["pm2_5"] = pm2_5;
   doc["pm10"] = pm10;
-  doc["sunrise"] = sunriseTime;
-  doc["sunset"] = sunsetTime;
-  doc["daylight"] = daylightHours;
 
   // 7-Day Forecast Array
   JsonArray fcArray = doc.createNestedArray("forecast");
@@ -286,7 +271,7 @@ void setup() {
   fetchWeatherData();
 
   client.setServer(mqtt_server, mqtt_port);
-  client.setBufferSize(4096); // Extended buffer for 7-day + 24h JSON payload
+  client.setBufferSize(4096);
   reconnectMqtt();
 }
 
