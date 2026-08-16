@@ -28,7 +28,7 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-// IST Timezone: UTC +5:30 (19800 seconds, 0 DST)
+// IST Timezone: UTC +5:30
 const long IST_OFFSET_SEC = 19800;
 const int DST_OFFSET_SEC = 0;
 
@@ -60,13 +60,13 @@ String aqiStatus = "Good";
 int currentPage = 0;
 const int totalPages = 3;
 unsigned long lastPageSwitch = 0;
-const unsigned long pageInterval = 4000;    // Switch page every 4 seconds
+const unsigned long pageInterval = 4000;
 
 unsigned long lastWeatherFetch = 0;
-const unsigned long weatherInterval = 30000; // API fetch every 30 seconds
+const unsigned long weatherInterval = 30000;
 
 unsigned long lastMqttPublish = 0;
-const unsigned long mqttInterval = 5000;     // Publish MQTT every 5 seconds
+const unsigned long mqttInterval = 4000;
 
 String getWeatherDescription(int code) {
   switch (code) {
@@ -124,7 +124,6 @@ void fetchWeatherData() {
   clientSecure.setInsecure();
   HTTPClient https;
 
-  // Weather Endpoint
   String weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=" + String(latitude, 4) +
                       "&longitude=" + String(longitude, 4) +
                       "&current=temperature_2m,relative_humidity_2m,apparent_temperature,surface_pressure,wind_speed_10m,wind_direction_10m,cloud_cover,uv_index,weather_code";
@@ -148,7 +147,6 @@ void fetchWeatherData() {
     https.end();
   }
 
-  // Air Quality Endpoint
   String aqiUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + String(latitude, 4) +
                   "&longitude=" + String(longitude, 4) +
                   "&current=us_aqi,pm10,pm2_5";
@@ -167,17 +165,18 @@ void fetchWeatherData() {
   }
 }
 
+// 24-Hour Format Handler (HH:MM:SS)
 void getFormattedTime(char* timeBuffer, char* dateBuffer) {
   time_t now = time(nullptr);
   struct tm* timeinfo = localtime(&now);
-  strftime(timeBuffer, 12, "%I:%M:%S%p", timeinfo);
+  strftime(timeBuffer, 10, "%H:%M:%S", timeinfo);  // 24-hour clock
   strftime(dateBuffer, 12, "%d-%b-%Y", timeinfo);
 }
 
 void publishTelemetry() {
   if (!client.connected()) return;
 
-  char timeBuf[12], dateBuf[12];
+  char timeBuf[10], dateBuf[12];
   getFormattedTime(timeBuf, dateBuf);
 
   DynamicJsonDocument doc(768);
@@ -201,10 +200,9 @@ void publishTelemetry() {
 
   String output;
   serializeJson(doc, output);
-  client.publish(mqtt_topic, output.c_str());
+  client.publish(mqtt_topic, output.c_str(), true);
 }
 
-// Draw bottom navigation dots [ • ○ ○ ]
 void drawPageDots(int active) {
   int startX = 54;
   int y = 60;
@@ -217,9 +215,8 @@ void drawPageDots(int active) {
   }
 }
 
-// Render Paginated OLED Screens
 void renderOLED() {
-  char timeBuf[12], dateBuf[12];
+  char timeBuf[10], dateBuf[12];
   getFormattedTime(timeBuf, dateBuf);
 
   display.clearDisplay();
@@ -227,9 +224,9 @@ void renderOLED() {
   display.setTextColor(SSD1306_WHITE);
 
   if (currentPage == 0) {
-    // === PAGE 1: CLOCK & WEATHER ===
+    // 24-hour time displayed cleanly with date
     display.setCursor(0, 0);
-    display.printf("%s %s", dateBuf, timeBuf);
+    display.printf("%s  %s", dateBuf, timeBuf);
     display.drawLine(0, 9, 128, 9, SSD1306_WHITE);
 
     display.setCursor(0, 13);
@@ -245,7 +242,6 @@ void renderOLED() {
     display.printf("Humid:  %d %%", humidity);
 
   } else if (currentPage == 1) {
-    // === PAGE 2: AIR QUALITY (AQI) ===
     display.setCursor(0, 0);
     display.printf("AQI: %s, %s", city.c_str(), country.c_str());
     display.drawLine(0, 9, 128, 9, SSD1306_WHITE);
@@ -263,7 +259,6 @@ void renderOLED() {
     display.printf("PM10:   %.1f ug/m3", pm10);
 
   } else if (currentPage == 2) {
-    // === PAGE 3: ATMOSPHERE & SOLAR ===
     display.setCursor(0, 0);
     display.print("Atmosphere & Wind");
     display.drawLine(0, 9, 128, 9, SSD1306_WHITE);
@@ -281,7 +276,6 @@ void renderOLED() {
     display.printf("UV: %.1f | Cloud: %d%%", uvIndex, cloudCover);
   }
 
-  // Draw Page Indicator
   drawPageDots(currentPage);
   display.display();
 }
@@ -290,7 +284,7 @@ void reconnectMqtt() {
   if (!client.connected()) {
     String clientId = "ESP8266-Weather-" + String(random(0xffff), HEX);
     if (client.connect(clientId.c_str())) {
-      publishTelemetry(); // Immediately send data upon connection
+      publishTelemetry();
     }
   }
 }
@@ -323,6 +317,8 @@ void setup() {
   fetchWeatherData();
 
   client.setServer(mqtt_server, mqtt_port);
+  client.setBufferSize(1024);
+  
   reconnectMqtt();
   renderOLED();
 }
@@ -335,26 +331,22 @@ void loop() {
 
   unsigned long currentMillis = millis();
 
-  // 1. Page Cycling every 4 seconds
   if (currentMillis - lastPageSwitch >= pageInterval) {
     lastPageSwitch = currentMillis;
     currentPage = (currentPage + 1) % totalPages;
   }
 
-  // 2. Render OLED (clock updates every cycle smoothly)
   static unsigned long lastOledDraw = 0;
   if (currentMillis - lastOledDraw >= 500) {
     lastOledDraw = currentMillis;
     renderOLED();
   }
 
-  // 3. Publish to MQTT every 5 seconds (keeps GitHub dashboard updated)
   if (currentMillis - lastMqttPublish >= mqttInterval) {
     lastMqttPublish = currentMillis;
     publishTelemetry();
   }
 
-  // 4. Fetch fresh Open-Meteo API data every 30 seconds
   if (currentMillis - lastWeatherFetch >= weatherInterval) {
     lastWeatherFetch = currentMillis;
     fetchWeatherData();

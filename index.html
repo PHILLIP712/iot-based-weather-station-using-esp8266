@@ -3,27 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Global IoT Weather & Air Quality Station (IST)</title>
-  <!-- Paho MQTT WebSocket Client for Cloud Stream -->
+  <title>IoT Weather & Air Quality Station</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-    h1 { font-size: 1.5rem; margin-bottom: 4px; color: #38bdf8; }
-    .meta-bar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; font-size: 0.95rem; color: #cbd5e1; margin-bottom: 6px; font-weight: 500; }
-    .status { font-size: 0.8rem; color: #94a3b8; margin-bottom: 20px; }
-    .status.online { color: #22c55e; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; width: 100%; max-width: 820px; margin-bottom: 20px; }
-    .card { background: #1e293b; border-radius: 10px; padding: 12px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
-    .card.highlight { border: 1px solid rgba(56, 189, 248, 0.3); }
-    .card.aqi-card { border: 1px solid rgba(234, 179, 8, 0.3); }
-    .card .label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; }
-    .card .value { font-size: 1.3rem; font-weight: bold; color: #f1f5f9; }
-    .card .unit { font-size: 0.8rem; color: #64748b; margin-left: 2px; }
-    .chart-box { background: #1e293b; border-radius: 10px; padding: 16px; width: 100%; max-width: 820px; box-sizing: border-box; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
-    .legend { display: flex; gap: 15px; justify-content: center; font-size: 0.8rem; margin-bottom: 10px; }
-    .legend span { display: flex; align-items: center; gap: 5px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-    canvas { width: 100%; height: 220px; display: block; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0b132b; color: #f8fafc; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+    h1 { font-size: 1.5rem; margin-bottom: 4px; color: #38bdf8; letter-spacing: -0.5px; }
+    .meta-bar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; font-size: 0.95rem; color: #94a3b8; margin-bottom: 6px; font-weight: 500; }
+    .status { font-size: 0.8rem; color: #94a3b8; margin-bottom: 20px; transition: color 0.3s ease; }
+    .status.online { color: #10b981; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; width: 100%; max-width: 820px; margin-bottom: 20px; }
+    .card { background: #1c2541; border-radius: 12px; padding: 14px; text-align: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.05); }
+    .card.highlight { border-color: rgba(56, 189, 248, 0.4); }
+    .card.aqi-card { border-color: rgba(245, 158, 11, 0.4); }
+    .card .label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px; }
+    .card .value { font-size: 1.35rem; font-weight: 700; color: #f1f5f9; }
+    .card .unit { font-size: 0.8rem; color: #64748b; margin-left: 2px; font-weight: 400; }
+    .chart-box { background: #1c2541; border-radius: 14px; padding: 20px; width: 100%; max-width: 820px; box-sizing: border-box; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.05); }
+    .legend { display: flex; gap: 20px; justify-content: center; font-size: 0.85rem; margin-bottom: 15px; font-weight: 500; }
+    .legend span { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+    canvas { width: 100%; height: 240px; display: block; }
   </style>
 </head>
 <body>
@@ -31,7 +30,7 @@
   <div class="meta-bar">
     <span id="locDisplay">Detecting Location...</span> &bull; 
     <span id="dateDisplay">--/--/----</span> &bull; 
-    <span id="timeDisplay">--:--:-- IST</span>
+    <span id="timeDisplay">--:--:--</span>
   </div>
   <div class="status" id="connStatus">Connecting to Cloud Broker...</div>
 
@@ -40,7 +39,7 @@
     <div class="card"><div class="label">Temperature</div><div class="value"><span id="temp">--</span><span class="unit">&deg;C</span></div></div>
     <div class="card"><div class="label">Feels Like</div><div class="value"><span id="heat">--</span><span class="unit">&deg;C</span></div></div>
     <div class="card"><div class="label">Humidity</div><div class="value"><span id="hum">--</span><span class="unit">%</span></div></div>
-    <div class="card aqi-card"><div class="label">Air Quality (AQI)</div><div class="value"><span id="aqi">--</span> <span class="unit" id="aqiStatus" style="font-size:0.75rem; color:#eab308;">--</span></div></div>
+    <div class="card aqi-card"><div class="label">Air Quality (AQI)</div><div class="value"><span id="aqi">--</span> <span class="unit" id="aqiStatus" style="font-size:0.75rem; color:#f59e0b;">--</span></div></div>
     <div class="card"><div class="label">PM2.5 / PM10</div><div class="value" style="font-size:0.95rem; padding-top:4px;"><span id="pm25">--</span> / <span id="pm10">--</span><span class="unit">&mu;g</span></div></div>
     <div class="card"><div class="label">Pressure</div><div class="value"><span id="press">--</span><span class="unit">hPa</span></div></div>
     <div class="card"><div class="label">Wind Speed</div><div class="value"><span id="wind">--</span><span class="unit">km/h</span></div></div>
@@ -50,63 +49,108 @@
 
   <div class="chart-box">
     <div class="legend">
-      <span><span class="dot" style="background:#ef4444"></span> Temp (°C)</span>
-      <span><span class="dot" style="background:#38bdf8"></span> Humidity (%)</span>
-      <span><span class="dot" style="background:#eab308"></span> AQI</span>
+      <span><span class="dot" style="background: linear-gradient(180deg, #f43f5e, #be123c);"></span> Temp (°C)</span>
+      <span><span class="dot" style="background: linear-gradient(180deg, #38bdf8, #0284c7);"></span> Humidity (%)</span>
+      <span><span class="dot" style="background: linear-gradient(180deg, #fbbf24, #d97706);"></span> AQI</span>
     </div>
-    <canvas id="graph"></canvas>
+    <canvas id="barGraph"></canvas>
   </div>
 
   <script>
     var MQTT_TOPIC = "arpan_weather_station/state";
-    var tempData = [], humData = [], aqiData = [];
-    var maxPoints = 25;
+    var maxHistory = 6; // Shows the latest 6 updates as clean grouped bar sets
+    var historyData = [];
 
-    var canvas = document.getElementById("graph");
+    var canvas = document.getElementById("barGraph");
     var ctx = canvas.getContext("2d");
 
     function resizeCanvas() {
-      canvas.width = canvas.parentElement.clientWidth - 32;
-      canvas.height = 220;
-      drawGraph();
+      canvas.width = canvas.parentElement.clientWidth - 40;
+      canvas.height = 240;
+      drawModernBarGraph();
     }
     window.addEventListener("resize", resizeCanvas);
 
-    function drawLine(data, color, maxScale) {
-      if (data.length < 2) return;
-      var step = canvas.width / (maxPoints - 1);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
+    // Helper: Draw rounded rectangles
+    function roundRect(ctx, x, y, width, height, radius) {
+      if (height < 1) return;
+      if (height < radius) radius = height;
       ctx.beginPath();
-      for (var i = 0; i < data.length; i++) {
-        var x = i * step;
-        var y = canvas.height - (data[i] / maxScale) * canvas.height;
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height);
+      ctx.lineTo(x, y + height);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+      ctx.fill();
     }
 
-    function drawGraph() {
+    function drawModernBarGraph() {
       if (!canvas.width || !canvas.height) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+      var bottomPad = 25;
+      var topPad = 20;
+      var graphHeight = canvas.height - bottomPad - topPad;
+
+      // Draw subtle grid lines
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
       ctx.lineWidth = 1;
       for (var j = 0; j <= 4; j++) {
-        var y = (canvas.height / 4) * j;
+        var y = topPad + (graphHeight / 4) * j;
         ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(canvas.width, y);
         ctx.stroke();
       }
 
-      drawLine(tempData, "#ef4444", 60);    // Max temp scale: 60 °C
-      drawLine(humData, "#38bdf8", 100);   // Max hum scale: 100%
-      drawLine(aqiData, "#eab308", 300);   // Max AQI scale: 300
+      if (historyData.length === 0) return;
+
+      var groupWidth = canvas.width / historyData.length;
+      var barWidth = Math.min(18, (groupWidth - 20) / 3);
+
+      for (var i = 0; i < historyData.length; i++) {
+        var d = historyData[i];
+        var groupCenterX = (i * groupWidth) + (groupWidth / 2);
+        var startX = groupCenterX - ((barWidth * 3 + 8) / 2);
+
+        // 1. Temperature Bar (Scale 0-60 °C)
+        var hTemp = Math.min(graphHeight, (d.temp / 60) * graphHeight);
+        var yTemp = topPad + graphHeight - hTemp;
+        var gradTemp = ctx.createLinearGradient(0, yTemp, 0, yTemp + hTemp);
+        gradTemp.addColorStop(0, "#f43f5e");
+        gradTemp.addColorStop(1, "#881337");
+        ctx.fillStyle = gradTemp;
+        roundRect(ctx, startX, yTemp, barWidth, hTemp, 4);
+
+        // 2. Humidity Bar (Scale 0-100 %)
+        var hHum = Math.min(graphHeight, (d.hum / 100) * graphHeight);
+        var yHum = topPad + graphHeight - hHum;
+        var gradHum = ctx.createLinearGradient(0, yHum, 0, yHum + hHum);
+        gradHum.addColorStop(0, "#38bdf8");
+        gradHum.addColorStop(1, "#0369a1");
+        ctx.fillStyle = gradHum;
+        roundRect(ctx, startX + barWidth + 4, yHum, barWidth, hHum, 4);
+
+        // 3. AQI Bar (Scale 0-300)
+        var hAqi = Math.min(graphHeight, (d.aqi / 300) * graphHeight);
+        var yAqi = topPad + graphHeight - hAqi;
+        var gradAqi = ctx.createLinearGradient(0, yAqi, 0, yAqi + hAqi);
+        gradAqi.addColorStop(0, "#fbbf24");
+        gradAqi.addColorStop(1, "#b45309");
+        ctx.fillStyle = gradAqi;
+        roundRect(ctx, startX + (barWidth * 2) + 8, yAqi, barWidth, hAqi, 4);
+
+        // Timestamp label beneath each group
+        ctx.fillStyle = "#64748b";
+        ctx.font = "10px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(d.timeLabel, groupCenterX, canvas.height - 6);
+      }
     }
 
-    // Connect to EMQX Public WebSocket Broker over Secure WSS (Port 8084)
     var client = new Paho.MQTT.Client("broker.emqx.io", 8084, "/mqtt", "webMonitor_" + parseInt(Math.random() * 10000, 10));
 
     client.onConnectionLost = function () {
@@ -134,16 +178,19 @@
         document.getElementById("uv").innerText = d.uv_index.toFixed(1);
         document.getElementById("clouds").innerText = d.cloud_cover;
 
-        if (tempData.length >= maxPoints) {
-          tempData.shift();
-          humData.shift();
-          aqiData.shift();
-        }
-        tempData.push(d.temperature);
-        humData.push(d.humidity);
-        aqiData.push(d.aqi);
+        var shortTime = d.time.split(" ")[0]; // e.g. "15:20:01"
 
-        drawGraph();
+        if (historyData.length >= maxHistory) {
+          historyData.shift();
+        }
+        historyData.push({
+          temp: d.temperature,
+          hum: d.humidity,
+          aqi: d.aqi,
+          timeLabel: shortTime
+        });
+
+        drawModernBarGraph();
       } catch (e) {
         console.error("Payload parse error:", e);
       }
