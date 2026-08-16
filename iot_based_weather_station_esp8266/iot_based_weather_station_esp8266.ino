@@ -28,28 +28,30 @@ String country = "";
 float latitude = 0.0;
 float longitude = 0.0;
 
-// Weather Telemetry Variables
-float temp = 0.0;
-float feelsLike = 0.0;
-int humidity = 0;
-float pressure = 0.0;
-float windSpeed = 0.0;
-int windDirection = 0;
-int cloudCover = 0;
-float uvIndex = 0.0;
-int weatherCode = 0;
+// Current Telemetry
+float temp = 0.0, feelsLike = 0.0, pressure = 0.0, windSpeed = 0.0, uvIndex = 0.0;
+int humidity = 0, windDirection = 0, cloudCover = 0, weatherCode = 0;
 String conditionText = "Updating...";
 
-// Air Quality Variables
+// Air Quality Telemetry
 int usAqi = 0;
-float pm2_5 = 0.0;
-float pm10 = 0.0;
+float pm2_5 = 0.0, pm10 = 0.0;
 String aqiStatus = "Good";
 
-// Solar Ephemeris Variables
-String sunriseTime = "--:--";
-String sunsetTime = "--:--";
+// Solar Ephemeris
+String sunriseTime = "--:--", sunsetTime = "--:--";
 float daylightHours = 0.0;
+
+// 3-Day Forecast Structures
+struct DayForecast {
+  String date;
+  float maxTemp;
+  float minTemp;
+  int pop; // Probability of precipitation %
+  int code;
+  String condition;
+};
+DayForecast forecast[3];
 
 // Timers
 unsigned long lastWeatherFetch = 0;
@@ -113,15 +115,14 @@ void fetchWeatherData() {
   clientSecure.setInsecure();
   HTTPClient https;
 
-  // Weather & Sun Ephemeris Endpoint
   String weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=" + String(latitude, 4) +
                       "&longitude=" + String(longitude, 4) +
                       "&current=temperature_2m,relative_humidity_2m,apparent_temperature,surface_pressure,wind_speed_10m,wind_direction_10m,cloud_cover,uv_index,weather_code" +
-                      "&daily=sunrise,sunset,daylight_duration&timezone=Asia%2FKolkata&forecast_days=1";
+                      "&daily=sunrise,sunset,daylight_duration,temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=Asia%2FKolkata&forecast_days=3";
 
   if (https.begin(clientSecure, weatherUrl)) {
     if (https.GET() == HTTP_CODE_OK) {
-      DynamicJsonDocument doc(3072);
+      DynamicJsonDocument doc(4096);
       deserializeJson(doc, https.getString());
       
       JsonObject current = doc["current"];
@@ -136,17 +137,27 @@ void fetchWeatherData() {
       weatherCode = current["weather_code"];
       conditionText = getWeatherDescription(weatherCode);
 
-      // Parse Sunrise / Sunset (e.g., "2026-08-16T05:22" -> "05:22")
+      // Ephemeris
       String rawRise = doc["daily"]["sunrise"][0].as<String>();
       String rawSet = doc["daily"]["sunset"][0].as<String>();
       if (rawRise.length() >= 16) sunriseTime = rawRise.substring(11, 16);
       if (rawSet.length() >= 16) sunsetTime = rawSet.substring(11, 16);
       daylightHours = doc["daily"]["daylight_duration"][0].as<float>() / 3600.0;
+
+      // Parse 3-day forecast
+      for (int i = 0; i < 3; i++) {
+        forecast[i].date = doc["daily"]["time"][i].as<String>();
+        forecast[i].maxTemp = doc["daily"]["temperature_2m_max"][i];
+        forecast[i].minTemp = doc["daily"]["temperature_2m_min"][i];
+        forecast[i].pop = doc["daily"]["precipitation_probability_max"][i] | 0;
+        forecast[i].code = doc["daily"]["weather_code"][i];
+        forecast[i].condition = getWeatherDescription(forecast[i].code);
+      }
     }
     https.end();
   }
 
-  // Air Quality Endpoint
+  // Air Quality
   String aqiUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + String(latitude, 4) +
                   "&longitude=" + String(longitude, 4) +
                   "&current=us_aqi,pm10,pm2_5";
@@ -178,7 +189,7 @@ void publishTelemetry() {
   char timeBuf[10], dateBuf[12];
   getFormattedTime(timeBuf, dateBuf);
 
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(2048);
   doc["city"] = city;
   doc["country"] = country;
   doc["time"] = String(timeBuf) + " IST";
@@ -199,6 +210,17 @@ void publishTelemetry() {
   doc["sunrise"] = sunriseTime;
   doc["sunset"] = sunsetTime;
   doc["daylight"] = daylightHours;
+
+  // Append Forecast Array
+  JsonArray fcArray = doc.createNestedArray("forecast");
+  for (int i = 0; i < 3; i++) {
+    JsonObject fc = fcArray.createNestedObject();
+    fc["date"] = forecast[i].date;
+    fc["max"] = forecast[i].maxTemp;
+    fc["min"] = forecast[i].minTemp;
+    fc["pop"] = forecast[i].pop;
+    fc["cond"] = forecast[i].condition;
+  }
 
   String output;
   serializeJson(doc, output);
@@ -229,7 +251,7 @@ void setup() {
   fetchWeatherData();
 
   client.setServer(mqtt_server, mqtt_port);
-  client.setBufferSize(1024);
+  client.setBufferSize(2048); // Extended for forecast payload
   reconnectMqtt();
 }
 
@@ -241,13 +263,11 @@ void loop() {
 
   unsigned long currentMillis = millis();
 
-  // 1-second real-time telemetry publish
   if (currentMillis - lastMqttPublish >= mqttInterval) {
     lastMqttPublish = currentMillis;
     publishTelemetry();
   }
 
-  // Periodic weather & sun updates
   if (currentMillis - lastWeatherFetch >= weatherInterval) {
     lastWeatherFetch = currentMillis;
     fetchWeatherData();

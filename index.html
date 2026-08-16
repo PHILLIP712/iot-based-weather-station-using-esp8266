@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IoT Weather & Sun Ephemeris Station</title>
+  <title>IoT Weather Station & Forecast</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #070d19; color: #f8fafc; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
@@ -12,13 +12,20 @@
     .status { font-size: 0.8rem; color: #94a3b8; margin-bottom: 16px; }
     .status.online { color: #10b981; }
 
-    /* Solar Cycle Banner */
     .solar-banner { background: linear-gradient(135deg, #1e1b4b, #0f172a); border-radius: 12px; padding: 14px 20px; width: 100%; max-width: 840px; box-sizing: border-box; margin-bottom: 16px; border: 1px solid rgba(139, 92, 246, 0.3); display: flex; flex-direction: column; gap: 10px; }
     .solar-header { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }
     .solar-badge { padding: 3px 8px; border-radius: 6px; font-weight: 600; font-size: 0.75rem; background: rgba(234, 179, 8, 0.2); color: #fbbf24; }
     .solar-track { position: relative; width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden; }
     .solar-progress { height: 100%; width: 0%; background: linear-gradient(90deg, #f59e0b, #fbbf24); transition: width 0.5s ease; border-radius: 4px; }
     .solar-times { display: flex; justify-content: space-between; font-size: 0.8rem; color: #94a3b8; }
+
+    /* 3-Day Forecast Section */
+    .forecast-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; width: 100%; max-width: 840px; margin-bottom: 16px; }
+    .fc-card { background: #0f172a; border-radius: 12px; padding: 14px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
+    .fc-date { font-size: 0.8rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; }
+    .fc-cond { font-size: 1.05rem; font-weight: 700; color: #38bdf8; }
+    .fc-temp { font-size: 1.15rem; font-weight: 600; color: #f1f5f9; }
+    .fc-pop { font-size: 0.8rem; color: #60a5fa; display: flex; align-items: center; gap: 4px; }
 
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; width: 100%; max-width: 840px; margin-bottom: 16px; }
     .card { background: #0f172a; border-radius: 12px; padding: 14px; text-align: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.06); }
@@ -56,6 +63,13 @@
       <span>🌅 Sunrise: <b id="sunriseVal">--:--</b></span>
       <span>🌇 Sunset: <b id="sunsetVal">--:--</b></span>
     </div>
+  </div>
+
+  <!-- 3-Day Forecast Section -->
+  <div class="forecast-grid" id="forecastDeck">
+    <div class="fc-card"><div class="fc-date">Today</div><div class="fc-cond">--</div><div class="fc-temp">--° / --°</div><div class="fc-pop">💧 Rain: --%</div></div>
+    <div class="fc-card"><div class="fc-date">Tomorrow</div><div class="fc-cond">--</div><div class="fc-temp">--° / --°</div><div class="fc-pop">💧 Rain: --%</div></div>
+    <div class="fc-card"><div class="fc-date">Day After</div><div class="fc-cond">--</div><div class="fc-temp">--° / --°</div><div class="fc-pop">💧 Rain: --%</div></div>
   </div>
 
   <div class="grid">
@@ -97,16 +111,13 @@
 
     function updateSunProgress(sunriseStr, sunsetStr, currentTimeStr) {
       if (!sunriseStr || !sunsetStr || sunriseStr === "--:--" || !currentTimeStr) return;
-      
       var parseMinutes = function(str) {
         var parts = str.split(":");
         return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
       };
-
       var riseMin = parseMinutes(sunriseStr);
       var setMin = parseMinutes(sunsetStr);
       var curMin = parseMinutes(currentTimeStr);
-
       var badge = document.getElementById("sunPhaseBadge");
       var bar = document.getElementById("sunProgressBar");
 
@@ -126,14 +137,28 @@
       }
     }
 
+    function renderForecast(fcArray) {
+      if (!fcArray || !fcArray.length) return;
+      var labels = ["Today", "Tomorrow", "Day After"];
+      var html = "";
+      for (var i = 0; i < fcArray.length; i++) {
+        var d = fcArray[i];
+        html += '<div class="fc-card">' +
+                '<div class="fc-date">' + (labels[i] || d.date) + ' (' + d.date.slice(5) + ')</div>' +
+                '<div class="fc-cond">' + d.cond + '</div>' +
+                '<div class="fc-temp">' + d.max.toFixed(0) + '&deg; / ' + d.min.toFixed(0) + '&deg;C</div>' +
+                '<div class="fc-pop">💧 Rain: <b>' + d.pop + '%</b></div>' +
+                '</div>';
+      }
+      document.getElementById("forecastDeck").innerHTML = html;
+    }
+
     function drawSpline(data, maxScale, strokeColor, glowColor, fillTopColor, fillBottomColor) {
       if (data.length < 2) return;
-
       var bottomPad = 25;
       var topPad = 15;
       var graphHeight = canvas.height - bottomPad - topPad;
       var step = canvas.width / (maxPoints - 1);
-
       var points = [];
       for (var i = 0; i < data.length; i++) {
         var x = i * step;
@@ -242,13 +267,14 @@
         document.getElementById("uv").innerText = d.uv_index.toFixed(1);
         document.getElementById("clouds").innerText = d.cloud_cover;
 
-        // Ephemeris updates
         if (d.sunrise) document.getElementById("sunriseVal").innerText = d.sunrise;
         if (d.sunset) document.getElementById("sunsetVal").innerText = d.sunset;
         if (d.daylight) document.getElementById("daylightVal").innerText = d.daylight.toFixed(1);
 
         var shortTime = d.time.split(" ")[0];
         updateSunProgress(d.sunrise, d.sunset, shortTime);
+
+        if (d.forecast) renderForecast(d.forecast);
 
         if (tempData.length >= maxPoints) {
           tempData.shift();
