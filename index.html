@@ -3,129 +3,129 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Live IoT Weather & Environmental Station</title>
+  <title>IoT Weather Station Dashboard</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
   <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #070d19; color: #f8fafc; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-    h1 { font-size: 1.5rem; margin-bottom: 4px; color: #38bdf8; letter-spacing: -0.5px; }
-    .meta-bar { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; font-size: 0.95rem; color: #94a3b8; margin-bottom: 6px; font-weight: 500; }
-    .status { font-size: 0.8rem; color: #94a3b8; margin-bottom: 12px; }
-    .status.online { color: #10b981; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100vh; width: 100vw; overflow: hidden; background: #060b13; color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    
+    .app-container { display: flex; flex-direction: column; height: 100vh; padding: 12px 18px; max-width: 1300px; margin: 0 auto; gap: 8px; justify-content: space-between; }
+    
+    /* Header Bar */
+    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 6px; }
+    .station-title { font-size: 1.15rem; font-weight: 700; color: #38bdf8; letter-spacing: -0.3px; }
+    .station-meta { font-size: 0.85rem; color: #94a3b8; font-weight: 500; }
+    .status-badge { font-size: 0.75rem; padding: 3px 8px; border-radius: 6px; background: rgba(255,255,255,0.05); color: #94a3b8; }
+    .status-badge.online { background: rgba(16, 185, 129, 0.15); color: #10b981; }
 
-    /* Advisory Box */
-    .advisory-box { width: 100%; max-width: 840px; box-sizing: border-box; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; transition: all 0.3s ease; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
-    .advisory-box.normal { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; }
-    .advisory-box.caution { background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; }
-    .advisory-box.hazard { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; }
-    .advisory-top { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; }
-    .advisory-msg { font-size: 0.9rem; color: #f1f5f9; font-weight: 400; line-height: 1.4; }
+    /* Compact Advisory Banner */
+    .advisory-pill { display: flex; justify-content: space-between; align-items: center; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); color: #34d399; padding: 6px 14px; border-radius: 8px; font-size: 0.8rem; font-weight: 500; }
+    .advisory-pill.caution { background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.4); color: #fbbf24; }
+    .advisory-pill.hazard { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.4); color: #f87171; }
 
-    /* 24-Hour Hourly Timeline Scroller */
-    .hourly-container { width: 100%; max-width: 840px; box-sizing: border-box; background: #0f172a; border-radius: 14px; padding: 16px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.06); box-shadow: 0 10px 20px -5px rgba(0,0,0,0.4); }
-    .hourly-title { font-size: 0.85rem; font-weight: 600; color: #38bdf8; text-transform: uppercase; margin-bottom: 12px; display: flex; justify-content: space-between; }
-    .hourly-scroller { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: #334155 transparent; }
-    .hourly-scroller::-webkit-scrollbar { height: 6px; }
-    .hourly-scroller::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-    .hour-pill { flex: 0 0 74px; background: #1e293b; border-radius: 10px; padding: 10px 6px; text-align: center; display: flex; flex-direction: column; gap: 4px; border: 1px solid rgba(255,255,255,0.04); }
-    .hour-pill.now { border-color: rgba(56, 189, 248, 0.5); background: rgba(56, 189, 248, 0.12); }
-    .hour-time { font-size: 0.75rem; color: #94a3b8; font-weight: 600; }
-    .hour-temp { font-size: 0.95rem; font-weight: 700; color: #f1f5f9; }
-    .hour-pop { font-size: 0.75rem; color: #60a5fa; font-weight: 500; }
+    /* Main Grid Split */
+    .main-layout { display: grid; grid-template-columns: 320px 1fr; gap: 10px; flex: 1; min-height: 0; }
 
-    /* 7-Day Forecast Grid */
-    .forecast-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 8px; width: 100%; max-width: 840px; margin-bottom: 16px; }
-    .fc-card { background: #0f172a; border-radius: 10px; padding: 10px 8px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
-    .fc-date { font-size: 0.75rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; }
-    .fc-cond { font-size: 0.75rem; font-weight: 600; color: #38bdf8; min-height: 28px; display: flex; align-items: center; justify-content: center; }
-    .fc-temp { font-size: 0.95rem; font-weight: 700; color: #f1f5f9; }
-    .fc-pop { font-size: 0.7rem; color: #60a5fa; }
-
-    /* Metric Grid */
-    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; width: 100%; max-width: 840px; margin-bottom: 16px; }
-    .card { background: #0f172a; border-radius: 12px; padding: 14px; text-align: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.06); }
+    /* Left Column: Live Metric Cards */
+    .metrics-pane { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; align-content: stretch; }
+    .card { background: rgba(15, 23, 42, 0.75); border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); padding: 8px 10px; display: flex; flex-direction: column; justify-content: center; text-align: center; }
     .card.highlight { border-color: rgba(56, 189, 248, 0.4); }
-    .card.aqi-card { border-color: rgba(245, 158, 11, 0.4); }
-    .card.alt-card { border-color: rgba(168, 85, 247, 0.4); }
-    .card .label { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px; }
-    .card .value { font-size: 1.35rem; font-weight: 700; color: #f1f5f9; }
-    .card .unit { font-size: 0.8rem; color: #64748b; margin-left: 2px; font-weight: 400; }
+    .card .label { font-size: 0.65rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+    .card .val { font-size: 1.15rem; font-weight: 700; color: #f1f5f9; }
+    .card .unit { font-size: 0.75rem; color: #64748b; font-weight: 400; margin-left: 2px; }
 
-    /* Spline Chart */
-    .chart-box { background: #0f172a; border-radius: 14px; padding: 20px; width: 100%; max-width: 840px; box-sizing: border-box; box-shadow: 0 15px 30px -5px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.06); margin-bottom: 16px; }
-    .legend { display: flex; gap: 20px; justify-content: center; font-size: 0.85rem; margin-bottom: 15px; font-weight: 500; }
-    .legend span { display: flex; align-items: center; gap: 6px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-    canvas { width: 100%; height: 220px; display: block; }
+    /* Right Column: Visual Forecasts & Chart */
+    .visual-pane { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+    
+    /* 24-Hour Scroller */
+    .hourly-strip { display: flex; gap: 8px; overflow-x: auto; background: rgba(15, 23, 42, 0.75); padding: 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.06); scrollbar-width: none; }
+    .hourly-strip::-webkit-scrollbar { display: none; }
+    .hour-chip { flex: 0 0 58px; background: rgba(30, 41, 59, 0.8); border-radius: 6px; padding: 4px; text-align: center; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.03); }
+    .hour-chip.now { border-color: rgba(56, 189, 248, 0.5); background: rgba(56, 189, 248, 0.15); }
+    .hour-chip .t { font-size: 0.65rem; color: #94a3b8; }
+    .hour-chip .v { font-weight: 700; color: #f8fafc; font-size: 0.8rem; margin: 1px 0; }
+    .hour-chip .p { font-size: 0.65rem; color: #60a5fa; }
 
-    /* Action Bar */
-    .action-bar { display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 840px; box-sizing: border-box; }
-    .btn-export { background: #1e293b; border: 1px solid rgba(56, 189, 248, 0.4); color: #38bdf8; padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
-    .btn-export:hover { background: #38bdf8; color: #070d19; }
-    .log-count { font-size: 0.8rem; color: #64748b; }
+    /* 7-Day Forecast Row */
+    .daily-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+    .day-chip { background: rgba(15, 23, 42, 0.75); border-radius: 8px; padding: 6px 4px; text-align: center; border: 1px solid rgba(255,255,255,0.06); font-size: 0.7rem; }
+    .day-chip .d { font-weight: 700; color: #94a3b8; text-transform: uppercase; font-size: 0.65rem; }
+    .day-chip .c { color: #38bdf8; font-size: 0.65rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 2px 0; }
+    .day-chip .temp { font-weight: 700; color: #f1f5f9; }
+    .day-chip .pop { color: #60a5fa; font-size: 0.65rem; }
+
+    /* Spline Canvas */
+    .chart-container { flex: 1; background: rgba(15, 23, 42, 0.75); border-radius: 10px; padding: 8px 12px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; min-height: 0; }
+    .chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 0.75rem; }
+    .legend { display: flex; gap: 12px; }
+    .legend span { display: flex; align-items: center; gap: 4px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    canvas { width: 100%; flex: 1; display: block; }
+
+    /* Footer Exporter */
+    footer { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #64748b; padding-top: 4px; }
+    .btn-csv { background: #1e293b; border: 1px solid rgba(56, 189, 248, 0.3); color: #38bdf8; padding: 4px 10px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; cursor: pointer; }
+    .btn-csv:hover { background: #38bdf8; color: #070d19; }
   </style>
 </head>
 <body>
-  <h1>Live Weather & Environmental Station</h1>
-  <div class="meta-bar">
-    <span id="locDisplay">Detecting Location...</span> &bull; 
-    <span id="dateDisplay">--/--/----</span> &bull; 
-    <span id="timeDisplay">--:--:--</span>
-  </div>
-  <div class="status" id="connStatus">Connecting to Cloud Broker...</div>
+  <div class="app-container">
+    <header>
+      <div class="station-title">Live Weather & Environmental Station</div>
+      <div class="station-meta">
+        <span id="loc">Detecting Location...</span> &bull; 
+        <span id="date">--/--/----</span> &bull; 
+        <span id="clock">--:--:--</span>
+      </div>
+      <div class="status-badge" id="mqttStatus">Connecting...</div>
+    </header>
 
-  <!-- Real-Time Advisory Engine Banner -->
-  <div class="advisory-box normal" id="advisoryCard">
-    <div class="advisory-top">
-      <span id="advisoryTitle">🛡️ Environmental Status: Optimal</span>
-      <span id="advisorySeverity">Normal</span>
+    <div class="advisory-pill normal" id="advPill">
+      <span id="advText">🛡️ Optimal: All environmental metrics within safe recreational thresholds.</span>
+      <span id="advSev" style="text-transform:uppercase; font-weight:700;">NORMAL</span>
     </div>
-    <div class="advisory-msg" id="advisoryText">Atmospheric metrics within safe recreational thresholds.</div>
-  </div>
 
-  <!-- 24-Hour Hourly Scroller -->
-  <div class="hourly-container">
-    <div class="hourly-title">
-      <span>⏱️ 24-Hour Forecast Timeline</span>
-      <span style="color:#64748b; font-size:0.75rem;">Scroll &rarr;</span>
+    <div class="main-layout">
+      <!-- Left 10-Metric Panel -->
+      <div class="metrics-pane">
+        <div class="card highlight"><div class="label">Condition</div><div class="val" id="cond" style="font-size:0.95rem;">--</div></div>
+        <div class="card"><div class="label">Temperature</div><div class="val"><span id="temp">--</span><span class="unit">&deg;C</span></div></div>
+        <div class="card"><div class="label">Feels Like</div><div class="val"><span id="heat">--</span><span class="unit">&deg;C</span></div></div>
+        <div class="card"><div class="label">Humidity</div><div class="val"><span id="hum">--</span><span class="unit">%</span></div></div>
+        <div class="card"><div class="label">Air Quality</div><div class="val"><span id="aqi">--</span> <span class="unit" id="aqiSt">--</span></div></div>
+        <div class="card"><div class="label">PM2.5 / PM10</div><div class="val" style="font-size:0.95rem;"><span id="pm25">--</span>/<span id="pm10">--</span></div></div>
+        <div class="card"><div class="label">Pressure</div><div class="val"><span id="press">--</span><span class="unit">hPa</span></div></div>
+        <div class="card"><div class="label">Wind Speed</div><div class="val"><span id="wind">--</span><span class="unit">km/h</span></div></div>
+        <div class="card"><div class="label">UV Index</div><div class="val" id="uv">--</div></div>
+        <div class="card"><div class="label">Cloud Cover</div><div class="val"><span id="clouds">--</span><span class="unit">%</span></div></div>
+      </div>
+
+      <!-- Right Visual Telemetry & Forecasts -->
+      <div class="visual-pane">
+        <div class="hourly-strip" id="hourlyStrip">
+          <div class="hour-chip"><div class="t">--:--</div><div class="v">--°</div><div class="p">💧 --%</div></div>
+        </div>
+
+        <div class="daily-strip" id="dailyStrip"></div>
+
+        <div class="chart-container">
+          <div class="chart-header">
+            <span style="color:#94a3b8; font-weight:600;">Live 30s Telemetry</span>
+            <div class="legend">
+              <span><span class="dot" style="background:#f43f5e"></span> Temp</span>
+              <span><span class="dot" style="background:#38bdf8"></span> Humidity</span>
+              <span><span class="dot" style="background:#fbbf24"></span> AQI</span>
+            </div>
+          </div>
+          <canvas id="splineCanvas"></canvas>
+        </div>
+      </div>
     </div>
-    <div class="hourly-scroller" id="hourlyStrip">
-      <div class="hour-pill"><div class="hour-time">--:--</div><div class="hour-temp">--°</div><div class="hour-pop">💧 --%</div></div>
-    </div>
-  </div>
 
-  <!-- 7-Day Forecast Section -->
-  <div class="forecast-grid" id="forecastDeck"></div>
-
-  <!-- Core Metric Grid -->
-  <div class="grid">
-    <div class="card highlight"><div class="label">Condition</div><div class="value" style="font-size:1.05rem;" id="cond">--</div></div>
-    <div class="card"><div class="label">Temperature</div><div class="value"><span id="temp">--</span><span class="unit">&deg;C</span></div></div>
-    <div class="card"><div class="label">Feels Like</div><div class="value"><span id="heat">--</span><span class="unit">&deg;C</span></div></div>
-    <div class="card"><div class="label">Humidity</div><div class="value"><span id="hum">--</span><span class="unit">%</span></div></div>
-    <div class="card aqi-card"><div class="label">Air Quality (AQI)</div><div class="value"><span id="aqi">--</span> <span class="unit" id="aqiStatus" style="font-size:0.75rem; color:#f59e0b;">--</span></div></div>
-    <div class="card alt-card"><div class="label">Est. Altitude</div><div class="value"><span id="altitude">--</span><span class="unit">m</span></div></div>
-    <div class="card alt-card"><div class="label">Baro Trend</div><div class="value" style="font-size:1.05rem;" id="baroTrend">Stable</div></div>
-    <div class="card"><div class="label">PM2.5 / PM10</div><div class="value" style="font-size:0.95rem; padding-top:4px;"><span id="pm25">--</span> / <span id="pm10">--</span><span class="unit">&mu;g</span></div></div>
-    <div class="card"><div class="label">Pressure</div><div class="value"><span id="press">--</span><span class="unit">hPa</span></div></div>
-    <div class="card"><div class="label">Wind Speed</div><div class="value"><span id="wind">--</span><span class="unit">km/h</span></div></div>
-    <div class="card"><div class="label">UV Index</div><div class="value"><span id="uv">--</span></div></div>
-    <div class="card"><div class="label">Cloud Cover</div><div class="value"><span id="clouds">--</span><span class="unit">%</span></div></div>
-  </div>
-
-  <!-- Spline Chart -->
-  <div class="chart-box">
-    <div class="legend">
-      <span><span class="dot" style="background:#f43f5e; box-shadow: 0 0 8px #f43f5e;"></span> Temp (°C)</span>
-      <span><span class="dot" style="background:#38bdf8; box-shadow: 0 0 8px #38bdf8;"></span> Humidity (%)</span>
-      <span><span class="dot" style="background:#fbbf24; box-shadow: 0 0 8px #fbbf24;"></span> AQI</span>
-    </div>
-    <canvas id="splineCanvas"></canvas>
-  </div>
-
-  <!-- Historical Logger & CSV Exporter -->
-  <div class="action-bar">
-    <span class="log-count" id="logCounter">0 telemetry frames logged</span>
-    <button class="btn-export" onclick="exportHistoricalCSV()">📥 Download CSV Log</button>
+    <footer>
+      <span id="logCount">0 frames logged</span>
+      <button class="btn-csv" onclick="downloadCSV()">📥 Export CSV</button>
+    </footer>
   </div>
 
   <script>
@@ -133,295 +133,170 @@
     var maxPoints = 30;
     var tempData = [], humData = [], aqiData = [], timeLabels = [];
     var telemetryLog = [];
-    var initialPressure = null;
     var forecastLoaded = false;
 
     var canvas = document.getElementById("splineCanvas");
     var ctx = canvas.getContext("2d");
 
     function resizeCanvas() {
-      canvas.width = canvas.parentElement.clientWidth - 40;
-      canvas.height = 220;
-      drawGlowingSplineChart();
+      if (canvas.parentElement) {
+        canvas.width = canvas.parentElement.clientWidth - 24;
+        canvas.height = canvas.parentElement.clientHeight - 28;
+        drawChart();
+      }
     }
     window.addEventListener("resize", resizeCanvas);
 
     function getWeatherDesc(code) {
-      var map = {
-        0: "Clear Sky", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast",
-        45: "Foggy", 48: "Foggy", 51: "Drizzle", 53: "Drizzle", 55: "Drizzle",
-        61: "Rain", 63: "Rain", 65: "Heavy Rain", 71: "Snow", 80: "Rain Showers",
-        81: "Rain Showers", 82: "Rain Showers", 95: "Thunderstorm"
-      };
+      var map = { 0:"Clear", 1:"Mainly Clear", 2:"Partly Cloudy", 3:"Overcast", 45:"Fog", 51:"Drizzle", 53:"Drizzle", 55:"Drizzle", 61:"Rain", 63:"Rain", 65:"Heavy Rain", 80:"Showers", 95:"Storm" };
       return map[code] || "Cloudy";
     }
 
-    // Direct Browser-Side API fetch for 100% Reliable 7-Day + 24H Timeline Forecast
-    function fetchDetailedForecast(lat, lon) {
+    function fetchForecast(lat, lon) {
       if (forecastLoaded) return;
-      var url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat +
-                "&longitude=" + lon +
+      var url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat + "&longitude=" + lon +
                 "&hourly=temperature_2m,precipitation_probability,weather_code" +
                 "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=Asia%2FKolkata&forecast_days=7";
 
-      fetch(url)
-        .then(function(res) { return res.json(); })
-        .then(function(data) {
-          forecastLoaded = true;
+      fetch(url).then(function(r){return r.json();}).then(function(data) {
+        forecastLoaded = true;
 
-          // Render 7-Day Forecast
-          var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-          var fcHtml = "";
-          for (var i = 0; i < data.daily.time.length; i++) {
-            var dateStr = data.daily.time[i];
-            var parts = dateStr.split("-");
-            var dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-            var dayLabel = (i === 0) ? "Today" : (i === 1 ? "Tmrw" : days[dt.getDay()]);
+        // 7-Day Forecast
+        var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        var dHtml = "";
+        for (var i = 0; i < data.daily.time.length; i++) {
+          var p = data.daily.time[i].split("-");
+          var dt = new Date(parseInt(p[0], 10), parseInt(p[1], 10) - 1, parseInt(p[2], 10));
+          var lbl = (i === 0) ? "Today" : (i === 1 ? "Tmrw" : days[dt.getDay()]);
+          dHtml += '<div class="day-chip"><div class="d">' + lbl + '</div><div class="c">' + getWeatherDesc(data.daily.weather_code[i]) + '</div><div class="temp">' + Math.round(data.daily.temperature_2m_max[i]) + '&deg;/' + Math.round(data.daily.temperature_2m_min[i]) + '&deg;</div><div class="pop">💧' + (data.daily.precipitation_probability_max[i]||0) + '%</div></div>';
+        }
+        document.getElementById("dailyStrip").innerHTML = dHtml;
 
-            var maxT = Math.round(data.daily.temperature_2m_max[i]);
-            var minT = Math.round(data.daily.temperature_2m_min[i]);
-            var pop = data.daily.precipitation_probability_max[i] || 0;
-            var cond = getWeatherDesc(data.daily.weather_code[i]);
-
-            fcHtml += '<div class="fc-card">' +
-                      '<div class="fc-date">' + dayLabel + '</div>' +
-                      '<div class="fc-cond">' + cond + '</div>' +
-                      '<div class="fc-temp">' + maxT + '&deg; / ' + minT + '&deg;</div>' +
-                      '<div class="fc-pop">💧 ' + pop + '%</div>' +
-                      '</div>';
+        // 24-Hour Scroller
+        var curHr = new Date().getHours();
+        var hHtml = "";
+        for (var j = 0; j < 24; j++) {
+          var idx = curHr + j;
+          if (idx < data.hourly.time.length) {
+            var timePart = data.hourly.time[idx].substring(11, 16);
+            hHtml += '<div class="hour-chip' + (j === 0 ? " now" : "") + '"><div class="t">' + (j === 0 ? "Now" : timePart) + '</div><div class="v">' + Math.round(data.hourly.temperature_2m[idx]) + '&deg;</div><div class="p">💧' + (data.hourly.precipitation_probability[idx]||0) + '%</div></div>';
           }
-          document.getElementById("forecastDeck").innerHTML = fcHtml;
-
-          // Render 24-Hour Timeline starting at current hour
-          var currentHour = new Date().getHours();
-          var hrHtml = "";
-          for (var j = 0; j < 24; j++) {
-            var idx = currentHour + j;
-            if (idx < data.hourly.time.length) {
-              var timePart = data.hourly.time[idx].substring(11, 16);
-              var hTemp = Math.round(data.hourly.temperature_2m[idx]);
-              var hPop = data.hourly.precipitation_probability[idx] || 0;
-              var isNow = (j === 0) ? " now" : "";
-
-              hrHtml += '<div class="hour-pill' + isNow + '">' +
-                        '<div class="hour-time">' + (j === 0 ? "Now" : timePart) + '</div>' +
-                        '<div class="hour-temp">' + hTemp + '&deg;</div>' +
-                        '<div class="hour-pop">💧 ' + hPop + '%</div>' +
-                        '</div>';
-            }
-          }
-          document.getElementById("hourlyStrip").innerHTML = hrHtml;
-        })
-        .catch(function(err) {
-          console.error("Forecast fetch error:", err);
-        });
-    }
-
-    function calculateAltitude(p) {
-      if (!p || p <= 0) return 0;
-      return Math.round(44330 * (1 - Math.pow(p / 1013.25, 0.190284)));
+        }
+        document.getElementById("hourlyStrip").innerHTML = hHtml;
+      }).catch(function(err){ console.error(err); });
     }
 
     function evaluateAdvisories(d) {
-      var box = document.getElementById("advisoryCard");
-      var title = document.getElementById("advisoryTitle");
-      var sev = document.getElementById("advisorySeverity");
-      var text = document.getElementById("advisoryText");
-
-      var alerts = [];
-      var level = "normal";
-
-      // 1. Rain, Drizzle & Severe Weather Detection
+      var pill = document.getElementById("advPill");
+      var txt = document.getElementById("advText");
+      var sev = document.getElementById("advSev");
       var cond = (d.condition || "").toLowerCase();
-      if (cond.includes("thunderstorm")) {
-        level = "hazard";
-        alerts.push("⚡ Thunderstorm Alert: Lightning and sudden wind gusts possible. Seek indoor shelter.");
-      } else if (cond.includes("heavy rain") || cond.includes("rain")) {
-        if (level !== "hazard") level = "caution";
-        alerts.push("🌧️ Precipitation Active: Rain showers reported. Carry an umbrella or rain gear.");
-      } else if (cond.includes("drizzle")) {
-        if (level !== "hazard") level = "caution";
-        alerts.push("🌦️ Light Drizzle: Surface roads may be slick. Waterproof protection recommended.");
-      }
+      var alerts = [], level = "normal";
 
-      // 2. Air Pollution Alerts
-      if (d.aqi > 200 || d.pm2_5 > 75) {
-        level = "hazard";
-        alerts.push("⚠️ Severe Air Pollution: Limit outdoor exertion. Sensitive individuals wear N95 masks.");
-      } else if (d.aqi > 100 || d.pm2_5 > 35) {
-        if (level !== "hazard") level = "caution";
-        alerts.push("😷 Moderate Air Quality: Sensitive groups should reduce prolonged outdoor exposure.");
-      }
+      if (cond.includes("storm")) { level = "hazard"; alerts.push("⚡ Thunderstorm Alert: Lightning and sudden gusts active."); }
+      else if (cond.includes("rain") || cond.includes("shower")) { level = "caution"; alerts.push("🌧️ Precipitation Active: Rain gear recommended."); }
+      else if (cond.includes("drizzle")) { level = "caution"; alerts.push("🌦️ Light Drizzle: Surface roads may be slick."); }
 
-      // 3. Adjusted Heat Index Thresholds (Realistic tropical thresholds)
-      if (d.feels_like > 42) {
-        level = "hazard";
-        alerts.push("🔥 Extreme Heat Exhaustion Risk: Stay hydrated and avoid direct sun exposure.");
-      } else if (d.feels_like > 38) {
-        if (level !== "hazard") level = "caution";
-        alerts.push("☀️ Elevated Heat Index: Maintain regular fluid intake.");
-      }
+      if (d.aqi > 200 || d.pm2_5 > 75) { level = "hazard"; alerts.push("⚠️ Severe Air Pollution: Limit outdoor activities."); }
+      else if (d.aqi > 100) { if (level !== "hazard") level = "caution"; alerts.push("😷 Moderate Air Quality: Sensitive groups reduce exertion."); }
 
-      // 4. UV & Wind Alerts
-      if (d.uv_index >= 8) {
-        if (level !== "hazard") level = "caution";
-        alerts.push("🧴 Very High UV Index: SPF 50+ sunscreen, sunglasses, and shade strongly advised.");
-      }
-      if (d.wind_speed > 45) {
-        level = "hazard";
-        alerts.push("💨 High Wind Warning: Secure lightweight outdoor fixtures.");
-      }
+      if (d.feels_like > 42) { level = "hazard"; alerts.push("🔥 Extreme Heat Risk: Hydrate frequently."); }
+      else if (d.feels_like > 38) { if (level !== "hazard") level = "caution"; alerts.push("☀️ Elevated Heat Index: Maintain fluid intake."); }
 
-      // Render Box
       if (alerts.length === 0) {
-        box.className = "advisory-box normal";
-        title.innerText = "🛡️ Environmental Status: Optimal";
-        sev.innerText = "Normal";
-        text.innerText = "All atmospheric and air quality parameters are within comfortable, safe thresholds.";
+        pill.className = "advisory-pill normal";
+        sev.innerText = "NORMAL";
+        txt.innerText = "🛡️ Environmental Status: Optimal. All atmospheric parameters within comfortable thresholds.";
       } else {
-        box.className = "advisory-box " + level;
-        title.innerText = (level === "hazard" ? "🚨 Active Weather / Air Quality Alert" : "⚠️ Environmental Advisory");
+        pill.className = "advisory-pill " + level;
         sev.innerText = level.toUpperCase();
-        text.innerHTML = alerts.join("<br>");
+        txt.innerText = alerts.join(" • ");
       }
     }
 
-    function drawSpline(data, maxScale, strokeColor, glowColor, fillTopColor, fillBottomColor) {
+    function drawSpline(data, maxScale, color, fillTop, fillBtm) {
       if (data.length < 2) return;
-      var bottomPad = 25;
-      var topPad = 15;
-      var graphHeight = canvas.height - bottomPad - topPad;
       var step = canvas.width / (maxPoints - 1);
-      var points = [];
+      var pts = [];
       for (var i = 0; i < data.length; i++) {
-        var x = i * step;
-        var y = topPad + graphHeight - (data[i] / maxScale) * graphHeight;
-        points.push({ x: x, y: y });
+        pts.push({ x: i * step, y: canvas.height - (data[i] / maxScale) * (canvas.height - 10) });
       }
 
       ctx.save();
-      var areaGrad = ctx.createLinearGradient(0, topPad, 0, topPad + graphHeight);
-      areaGrad.addColorStop(0, fillTopColor);
-      areaGrad.addColorStop(1, fillBottomColor);
-      ctx.fillStyle = areaGrad;
-
+      var grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      grad.addColorStop(0, fillTop); grad.addColorStop(1, fillBtm);
+      ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (var i = 0; i < points.length - 1; i++) {
-        var xc = (points[i].x + points[i + 1].x) / 2;
-        var yc = (points[i].y + points[i + 1].y) / 2;
-        ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (var j = 0; j < pts.length - 1; j++) {
+        var xc = (pts[j].x + pts[j + 1].x) / 2;
+        var yc = (pts[j].y + pts[j + 1].y) / 2;
+        ctx.quadraticCurveTo(pts[j].x, pts[j].y, xc, yc);
       }
-      ctx.quadraticCurveTo(points[points.length - 1].x, points[points.length - 1].y, points[points.length - 1].x, points[points.length - 1].y);
-      ctx.lineTo(points[points.length - 1].x, topPad + graphHeight);
-      ctx.lineTo(points[0].x, topPad + graphHeight);
+      ctx.lineTo(pts[pts.length - 1].x, canvas.height);
+      ctx.lineTo(pts[0].x, canvas.height);
       ctx.closePath();
       ctx.fill();
       ctx.restore();
 
-      ctx.save();
-      ctx.shadowColor = glowColor;
-      ctx.shadowBlur = 10;
-      ctx.strokeStyle = strokeColor;
-      ctx.lineWidth = 2.5;
-
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (var i = 0; i < points.length - 1; i++) {
-        var xc = (points[i].x + points[i + 1].x) / 2;
-        var yc = (points[i].y + points[i + 1].y) / 2;
-        ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (var k = 0; k < pts.length - 1; k++) {
+        var xc = (pts[k].x + pts[k + 1].x) / 2;
+        var yc = (pts[k].y + pts[k + 1].y) / 2;
+        ctx.quadraticCurveTo(pts[k].x, pts[k].y, xc, yc);
       }
       ctx.stroke();
-
-      var lastPt = points[points.length - 1];
-      ctx.fillStyle = strokeColor;
-      ctx.beginPath();
-      ctx.arc(lastPt.x, lastPt.y, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
     }
 
-    function drawGlowingSplineChart() {
+    function drawChart() {
       if (!canvas.width || !canvas.height) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      var bottomPad = 25;
-      var topPad = 15;
-      var graphHeight = canvas.height - bottomPad - topPad;
-
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.04)";
-      ctx.lineWidth = 1;
-      for (var j = 0; j <= 4; j++) {
-        var y = topPad + (graphHeight / 4) * j;
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
-        ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,0.03)";
+      for (var i = 0; i <= 3; i++) {
+        var y = (canvas.height / 3) * i;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
       }
 
-      drawSpline(tempData, 60, "#f43f5e", "rgba(244, 63, 94, 0.8)", "rgba(244, 63, 94, 0.25)", "rgba(244, 63, 94, 0.0)");
-      drawSpline(humData, 100, "#38bdf8", "rgba(56, 189, 248, 0.8)", "rgba(56, 189, 248, 0.20)", "rgba(56, 189, 248, 0.0)");
-      drawSpline(aqiData, 300, "#fbbf24", "rgba(251, 191, 36, 0.8)", "rgba(251, 191, 36, 0.18)", "rgba(251, 191, 36, 0.0)");
-
-      ctx.fillStyle = "#64748b";
-      ctx.font = "10px sans-serif";
-      ctx.textAlign = "center";
-      var step = canvas.width / (maxPoints - 1);
-      for (var i = 0; i < timeLabels.length; i += 5) {
-        ctx.fillText(timeLabels[i], i * step, canvas.height - 6);
-      }
+      drawSpline(tempData, 60, "#f43f5e", "rgba(244,63,94,0.25)", "rgba(244,63,94,0.0)");
+      drawSpline(humData, 100, "#38bdf8", "rgba(56,189,248,0.20)", "rgba(56,189,248,0.0)");
+      drawSpline(aqiData, 300, "#fbbf24", "rgba(251,191,36,0.18)", "rgba(251,191,36,0.0)");
     }
 
-    function exportHistoricalCSV() {
-      if (!telemetryLog.length) {
-        alert("No telemetry data captured yet.");
-        return;
-      }
-      var headers = ["Timestamp", "Date", "City", "Condition", "Temperature_C", "FeelsLike_C", "Humidity_Pct", "Pressure_hPa", "Altitude_m", "WindSpeed_kmh", "AQI", "PM2_5", "PM10", "UV_Index"];
-      var rows = [headers.join(",")];
-
+    function downloadCSV() {
+      if (!telemetryLog.length) { alert("No logs captured yet."); return; }
+      var h = ["Timestamp", "Date", "City", "Condition", "Temperature_C", "FeelsLike_C", "Humidity_Pct", "Pressure_hPa", "WindSpeed_kmh", "AQI", "PM2_5", "PM10", "UV_Index"];
+      var r = [h.join(",")];
       for (var i = 0; i < telemetryLog.length; i++) {
         var d = telemetryLog[i];
-        var alt = calculateAltitude(d.pressure);
-        var row = [
-          d.time, d.date, '"' + d.city + '"', '"' + d.condition + '"',
-          d.temperature, d.feels_like, d.humidity, d.pressure, alt,
-          d.wind_speed, d.aqi, d.pm2_5, d.pm10, d.uv_index
-        ];
-        rows.push(row.join(","));
+        r.push([d.time, d.date, '"' + d.city + '"', '"' + d.condition + '"', d.temperature, d.feels_like, d.humidity, d.pressure, d.wind_speed, d.aqi, d.pm2_5, d.pm10, d.uv_index].join(","));
       }
-
-      var csvContent = "data:text/csv;charset=utf-8," + rows.join("\n");
-      var encodedUri = encodeURI(csvContent);
-      var link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", "weather_telemetry_" + Date.now() + ".csv");
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      var a = document.createElement("a");
+      a.href = "data:text/csv;charset=utf-8," + encodeURI(r.join("\n"));
+      a.download = "weather_telemetry_" + Date.now() + ".csv";
+      a.click();
     }
 
-    var client = new Paho.MQTT.Client("broker.emqx.io", 8084, "/mqtt", "webMonitor_" + parseInt(Math.random() * 10000, 10));
-
-    client.onConnectionLost = function () {
-      document.getElementById("connStatus").innerText = "Disconnected. Reconnecting to Cloud Broker...";
-      document.getElementById("connStatus").className = "status";
+    var client = new Paho.MQTT.Client("broker.emqx.io", 8084, "/mqtt", "webMon_" + parseInt(Math.random() * 10000, 10));
+    client.onConnectionLost = function() {
+      var s = document.getElementById("mqttStatus"); s.innerText = "Reconnecting..."; s.className = "status-badge";
       setTimeout(connectMqtt, 3000);
     };
-
-    client.onMessageArrived = function (message) {
+    client.onMessageArrived = function(msg) {
       try {
-        var d = JSON.parse(message.payloadString);
-        document.getElementById("locDisplay").innerText = d.city + ", " + d.country;
-        document.getElementById("dateDisplay").innerText = d.date;
-        document.getElementById("timeDisplay").innerText = d.time;
+        var d = JSON.parse(msg.payloadString);
+        document.getElementById("loc").innerText = d.city + ", " + d.country;
+        document.getElementById("date").innerText = d.date;
+        document.getElementById("clock").innerText = d.time;
         document.getElementById("cond").innerText = d.condition;
         document.getElementById("temp").innerText = d.temperature.toFixed(1);
         document.getElementById("heat").innerText = d.feels_like.toFixed(1);
         document.getElementById("hum").innerText = d.humidity;
         document.getElementById("aqi").innerText = d.aqi;
-        document.getElementById("aqiStatus").innerText = "(" + d.aqi_status + ")";
+        document.getElementById("aqiSt").innerText = "(" + d.aqi_status + ")";
         document.getElementById("pm25").innerText = d.pm2_5.toFixed(1);
         document.getElementById("pm10").innerText = d.pm10.toFixed(0);
         document.getElementById("press").innerText = d.pressure.toFixed(0);
@@ -429,67 +304,30 @@
         document.getElementById("uv").innerText = d.uv_index.toFixed(1);
         document.getElementById("clouds").innerText = d.cloud_cover;
 
-        var altVal = calculateAltitude(d.pressure);
-        document.getElementById("altitude").innerText = altVal;
-
-        if (initialPressure === null) initialPressure = d.pressure;
-        var pDiff = d.pressure - initialPressure;
-        var trendEl = document.getElementById("baroTrend");
-        if (pDiff > 1.2) {
-          trendEl.innerText = "Rising (Fair)";
-          trendEl.style.color = "#10b981";
-        } else if (pDiff < -1.2) {
-          trendEl.innerText = "Falling (Rain)";
-          trendEl.style.color = "#f43f5e";
-        } else {
-          trendEl.innerText = "Stable";
-          trendEl.style.color = "#38bdf8";
-        }
-
         evaluateAdvisories(d);
-
-        // Fetch browser-side detailed forecast automatically when coordinates arrive
-        if (d.lat && d.lon) {
-          fetchDetailedForecast(d.lat, d.lon);
-        }
+        if (d.lat && d.lon) fetchForecast(d.lat, d.lon);
 
         telemetryLog.push(d);
-        document.getElementById("logCounter").innerText = telemetryLog.length + " frames logged";
+        document.getElementById("logCount").innerText = telemetryLog.length + " frames logged";
 
-        var shortTime = d.time.split(" ")[0];
-        if (tempData.length >= maxPoints) {
-          tempData.shift();
-          humData.shift();
-          aqiData.shift();
-          timeLabels.shift();
-        }
-        tempData.push(d.temperature);
-        humData.push(d.humidity);
-        aqiData.push(d.aqi);
-        timeLabels.push(shortTime);
-
-        drawGlowingSplineChart();
-      } catch (e) {
-        console.error("Payload error:", e);
-      }
+        if (tempData.length >= maxPoints) { tempData.shift(); humData.shift(); aqiData.shift(); }
+        tempData.push(d.temperature); humData.push(d.humidity); aqiData.push(d.aqi);
+        drawChart();
+      } catch (e) { console.error(e); }
     };
 
     function connectMqtt() {
       client.connect({
         useSSL: true,
-        onSuccess: function () {
-          document.getElementById("connStatus").innerText = "● Cloud Connected (Streaming Live Telemetry)";
-          document.getElementById("connStatus").className = "status online";
+        onSuccess: function() {
+          var s = document.getElementById("mqttStatus"); s.innerText = "● Cloud Stream Active"; s.className = "status-badge online";
           client.subscribe(MQTT_TOPIC);
         },
-        onFailure: function () {
-          document.getElementById("connStatus").innerText = "Connection Failed. Retrying...";
-          setTimeout(connectMqtt, 3000);
-        }
+        onFailure: function() { setTimeout(connectMqtt, 3000); }
       });
     }
 
-    resizeCanvas();
+    setTimeout(resizeCanvas, 100);
     connectMqtt();
   </script>
 </body>
