@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>IoT Weather Station & Hourly Timeline</title>
+  <title>IoT Weather Station - 24H Timeline & 7-Day Forecast</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #070d19; color: #f8fafc; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
@@ -22,13 +22,13 @@
     /* 24-Hour Hourly Timeline Scroller */
     .hourly-container { width: 100%; max-width: 840px; box-sizing: border-box; background: #0f172a; border-radius: 14px; padding: 16px; margin-bottom: 16px; border: 1px solid rgba(255,255,255,0.06); box-shadow: 0 10px 20px -5px rgba(0,0,0,0.4); }
     .hourly-title { font-size: 0.85rem; font-weight: 600; color: #38bdf8; text-transform: uppercase; margin-bottom: 12px; display: flex; justify-content: space-between; }
-    .hourly-scroller { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; scrollbar-color: #334155 transparent; }
+    .hourly-scroller { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: thin; scrollbar-color: #334155 transparent; }
     .hourly-scroller::-webkit-scrollbar { height: 6px; }
     .hourly-scroller::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-    .hour-pill { flex: 0 0 76px; background: #1e293b; border-radius: 10px; padding: 10px 8px; text-align: center; display: flex; flex-direction: column; gap: 5px; border: 1px solid rgba(255,255,255,0.04); }
-    .hour-pill.now { border-color: rgba(56, 189, 248, 0.5); background: rgba(56, 189, 248, 0.1); }
+    .hour-pill { flex: 0 0 74px; background: #1e293b; border-radius: 10px; padding: 10px 6px; text-align: center; display: flex; flex-direction: column; gap: 4px; border: 1px solid rgba(255,255,255,0.04); }
+    .hour-pill.now { border-color: rgba(56, 189, 248, 0.5); background: rgba(56, 189, 248, 0.12); }
     .hour-time { font-size: 0.75rem; color: #94a3b8; font-weight: 600; }
-    .hour-temp { font-size: 1rem; font-weight: 700; color: #f1f5f9; }
+    .hour-temp { font-size: 0.95rem; font-weight: 700; color: #f1f5f9; }
     .hour-pop { font-size: 0.75rem; color: #60a5fa; font-weight: 500; }
 
     .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; width: 100%; max-width: 840px; margin-bottom: 16px; }
@@ -48,12 +48,13 @@
     .compass-val { font-size: 1.25rem; font-weight: 700; color: #38bdf8; }
     .compass-sub { font-size: 0.8rem; color: #cbd5e1; }
 
-    .forecast-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; width: 100%; max-width: 840px; margin-bottom: 16px; }
-    .fc-card { background: #0f172a; border-radius: 12px; padding: 14px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
-    .fc-date { font-size: 0.8rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; }
-    .fc-cond { font-size: 1.05rem; font-weight: 700; color: #38bdf8; }
-    .fc-temp { font-size: 1.15rem; font-weight: 600; color: #f1f5f9; }
-    .fc-pop { font-size: 0.8rem; color: #60a5fa; }
+    /* 7-Day Forecast Grid */
+    .forecast-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 8px; width: 100%; max-width: 840px; margin-bottom: 16px; }
+    .fc-card { background: #0f172a; border-radius: 10px; padding: 10px 8px; border: 1px solid rgba(255,255,255,0.06); display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
+    .fc-date { font-size: 0.75rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; }
+    .fc-cond { font-size: 0.75rem; font-weight: 600; color: #38bdf8; min-height: 28px; display: flex; align-items: center; }
+    .fc-temp { font-size: 0.95rem; font-weight: 700; color: #f1f5f9; }
+    .fc-pop { font-size: 0.7rem; color: #60a5fa; }
 
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; width: 100%; max-width: 840px; margin-bottom: 16px; }
     .card { background: #0f172a; border-radius: 12px; padding: 14px; text-align: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.06); }
@@ -97,7 +98,7 @@
   <!-- 24-Hour Hourly Scroller -->
   <div class="hourly-container">
     <div class="hourly-title">
-      <span>⏱️ 12-Hour Hourly Trend</span>
+      <span>⏱️ 24-Hour Forecast Timeline</span>
       <span style="color:#64748b; font-size:0.75rem;">Scroll &rarr;</span>
     </div>
     <div class="hourly-scroller" id="hourlyStrip">
@@ -138,12 +139,8 @@
     </div>
   </div>
 
-  <!-- 3-Day Forecast Section -->
-  <div class="forecast-grid" id="forecastDeck">
-    <div class="fc-card"><div class="fc-date">Today</div><div class="fc-cond">--</div><div class="fc-temp">--° / --°</div><div class="fc-pop">💧 Rain: --%</div></div>
-    <div class="fc-card"><div class="fc-date">Tomorrow</div><div class="fc-cond">--</div><div class="fc-temp">--° / --°</div><div class="fc-pop">💧 Rain: --%</div></div>
-    <div class="fc-card"><div class="fc-date">Day After</div><div class="fc-cond">--</div><div class="fc-temp">--° / --°</div><div class="fc-pop">💧 Rain: --%</div></div>
-  </div>
+  <!-- 7-Day Forecast Section -->
+  <div class="forecast-grid" id="forecastDeck"></div>
 
   <!-- Core Metric Grid -->
   <div class="grid">
@@ -207,6 +204,24 @@
                 '</div>';
       }
       document.getElementById("hourlyStrip").innerHTML = html;
+    }
+
+    function renderForecast(fcArray) {
+      if (!fcArray || !fcArray.length) return;
+      var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      var html = "";
+      for (var i = 0; i < fcArray.length; i++) {
+        var d = fcArray[i];
+        var dateObj = new Date(d.date);
+        var dayLabel = (i === 0) ? "Today" : (i === 1 ? "Tmrw" : days[dateObj.getDay()]);
+        html += '<div class="fc-card">' +
+                '<div class="fc-date">' + dayLabel + '</div>' +
+                '<div class="fc-cond">' + d.cond + '</div>' +
+                '<div class="fc-temp">' + d.max.toFixed(0) + '&deg; / ' + d.min.toFixed(0) + '&deg;</div>' +
+                '<div class="fc-pop">💧 ' + d.pop + '%</div>' +
+                '</div>';
+      }
+      document.getElementById("forecastDeck").innerHTML = html;
     }
 
     function calculateAltitude(p) {
@@ -315,22 +330,6 @@
         badge.style.color = "#94a3b8";
         bar.style.width = "100%";
       }
-    }
-
-    function renderForecast(fcArray) {
-      if (!fcArray || !fcArray.length) return;
-      var labels = ["Today", "Tomorrow", "Day After"];
-      var html = "";
-      for (var i = 0; i < fcArray.length; i++) {
-        var d = fcArray[i];
-        html += '<div class="fc-card">' +
-                '<div class="fc-date">' + (labels[i] || d.date) + ' (' + d.date.slice(5) + ')</div>' +
-                '<div class="fc-cond">' + d.cond + '</div>' +
-                '<div class="fc-temp">' + d.max.toFixed(0) + '&deg; / ' + d.min.toFixed(0) + '&deg;C</div>' +
-                '<div class="fc-pop">💧 Rain: <b>' + d.pop + '%</b></div>' +
-                '</div>';
-      }
-      document.getElementById("forecastDeck").innerHTML = html;
     }
 
     function drawSpline(data, maxScale, strokeColor, glowColor, fillTopColor, fillBottomColor) {
