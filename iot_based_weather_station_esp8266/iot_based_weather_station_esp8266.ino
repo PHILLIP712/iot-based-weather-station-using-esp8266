@@ -28,12 +28,12 @@ String country = "";
 float latitude = 0.0;
 float longitude = 0.0;
 
-// Meteorological Telemetry Variables
+// Meteorological Telemetry
 float temp = 0.0, feelsLike = 0.0, pressure = 0.0, windSpeed = 0.0, uvIndex = 0.0;
 int humidity = 0, windDirection = 0, cloudCover = 0, weatherCode = 0;
 String conditionText = "Updating...";
 
-// Air Quality Telemetry Variables
+// Air Quality Telemetry
 int usAqi = 0;
 float pm2_5 = 0.0, pm10 = 0.0;
 String aqiStatus = "Good";
@@ -85,7 +85,6 @@ String getAqiCategory(int aqi) {
   return "Hazardous";
 }
 
-// 1. Auto-detect Lat/Lon and Location using ISP IP
 bool fetchLocation() {
   WiFiClient clientHttp;
   HTTPClient http;
@@ -110,7 +109,6 @@ bool fetchLocation() {
   return false;
 }
 
-// 2. Fetch Multi-Metric Weather, Solar & 3-Day Forecast
 void fetchWeatherData() {
   if (latitude == 0.0 && longitude == 0.0) return;
 
@@ -140,14 +138,12 @@ void fetchWeatherData() {
       weatherCode = current["weather_code"];
       conditionText = getWeatherDescription(weatherCode);
 
-      // Sun Ephemeris
       String rawRise = doc["daily"]["sunrise"][0].as<String>();
       String rawSet = doc["daily"]["sunset"][0].as<String>();
       if (rawRise.length() >= 16) sunriseTime = rawRise.substring(11, 16);
       if (rawSet.length() >= 16) sunsetTime = rawSet.substring(11, 16);
       daylightHours = doc["daily"]["daylight_duration"][0].as<float>() / 3600.0;
 
-      // 3-Day Forecast
       for (int i = 0; i < 3; i++) {
         forecast[i].date = doc["daily"]["time"][i].as<String>();
         forecast[i].maxTemp = doc["daily"]["temperature_2m_max"][i];
@@ -160,7 +156,6 @@ void fetchWeatherData() {
     https.end();
   }
 
-  // 3. Air Quality Endpoint
   String aqiUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + String(latitude, 4) +
                   "&longitude=" + String(longitude, 4) +
                   "&current=us_aqi,pm10,pm2_5";
@@ -179,7 +174,6 @@ void fetchWeatherData() {
   }
 }
 
-// 4. Format 24-Hour Clock in IST
 void getFormattedTime(char* timeBuffer, char* dateBuffer) {
   time_t now = time(nullptr);
   struct tm* timeinfo = localtime(&now);
@@ -187,7 +181,6 @@ void getFormattedTime(char* timeBuffer, char* dateBuffer) {
   strftime(dateBuffer, 12, "%d-%b-%Y", timeinfo);
 }
 
-// 5. Serialize Complete JSON Packet to MQTT
 void publishTelemetry() {
   if (!client.connected()) return;
 
@@ -216,7 +209,6 @@ void publishTelemetry() {
   doc["sunset"] = sunsetTime;
   doc["daylight"] = daylightHours;
 
-  // Append Forecast Array
   JsonArray fcArray = doc.createNestedArray("forecast");
   for (int i = 0; i < 3; i++) {
     JsonObject fc = fcArray.createNestedObject();
@@ -256,7 +248,7 @@ void setup() {
   fetchWeatherData();
 
   client.setServer(mqtt_server, mqtt_port);
-  client.setBufferSize(2048); // Set MQTT buffer to 2 KB for extended payload
+  client.setBufferSize(2048);
   reconnectMqtt();
 }
 
@@ -268,13 +260,11 @@ void loop() {
 
   unsigned long currentMillis = millis();
 
-  // Stream per-second live frame
   if (currentMillis - lastMqttPublish >= mqttInterval) {
     lastMqttPublish = currentMillis;
     publishTelemetry();
   }
 
-  // Refresh API forecasts every 30 seconds
   if (currentMillis - lastWeatherFetch >= weatherInterval) {
     lastWeatherFetch = currentMillis;
     fetchWeatherData();
