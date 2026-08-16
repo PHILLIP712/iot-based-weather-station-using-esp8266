@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Global IoT Weather Station</title>
+  <!-- Paho MQTT WebSocket Client -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+    h1 { font-size: 1.5rem; margin-bottom: 4px; color: #38bdf8; }
+    .status { font-size: 0.8rem; color: #94a3b8; margin-bottom: 20px; }
+    .status.online { color: #22c55e; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; width: 100%; max-width: 720px; margin-bottom: 20px; }
+    .card { background: #1e293b; border-radius: 10px; padding: 14px; text-align: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
+    .card.derived { border: 1px solid rgba(56, 189, 248, 0.2); }
+    .card .label { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px; }
+    .card .value { font-size: 1.4rem; font-weight: bold; color: #f1f5f9; }
+    .card .unit { font-size: 0.85rem; color: #64748b; margin-left: 2px; }
+    .chart-box { background: #1e293b; border-radius: 10px; padding: 16px; width: 100%; max-width: 720px; box-sizing: border-box; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
+    .legend { display: flex; gap: 15px; justify-content: center; font-size: 0.8rem; margin-bottom: 10px; }
+    .legend span { display: flex; align-items: center; gap: 5px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+    canvas { width: 100%; height: 220px; display: block; }
+  </style>
+</head>
+<body>
+  <h1>Global Weather Station</h1>
+  <div class="status" id="connStatus">Connecting to Cloud Broker...</div>
+
+  <div class="grid">
+    <div class="card"><div class="label">Temperature</div><div class="value"><span id="temp">--</span><span class="unit">&deg;C</span></div></div>
+    <div class="card"><div class="label">Humidity</div><div class="value"><span id="hum">--</span><span class="unit">%</span></div></div>
+    <div class="card"><div class="label">Pressure</div><div class="value"><span id="press">--</span><span class="unit">hPa</span></div></div>
+    <div class="card"><div class="label">Ambient Light</div><div class="value"><span id="lux">--</span><span class="unit">lx</span></div></div>
+    <div class="card derived"><div class="label">Feels Like</div><div class="value"><span id="heat">--</span><span class="unit">&deg;C</span></div></div>
+    <div class="card derived"><div class="label">Dew Point</div><div class="value"><span id="dew">--</span><span class="unit">&deg;C</span></div></div>
+    <div class="card derived"><div class="label">Trend</div><div class="value" style="font-size:1rem; padding-top:4px;" id="trend">--</div></div>
+  </div>
+
+  <div class="chart-box">
+    <div class="legend">
+      <span><span class="dot" style="background:#ef4444"></span> Temp (°C)</span>
+      <span><span class="dot" style="background:#38bdf8"></span> Humidity (%)</span>
+      <span><span class="dot" style="background:#eab308"></span> Light (x10 Lux)</span>
+    </div>
+    <canvas id="graph"></canvas>
+  </div>
+
+  <script>
+    var MQTT_TOPIC = "arpan_weather_station/state";
+    var tempData = [], humData = [], lightData = [];
+    var maxPoints = 25;
+
+    var canvas = document.getElementById("graph");
+    var ctx = canvas.getContext("2d");
+
+    function resizeCanvas() {
+      canvas.width = canvas.parentElement.clientWidth - 32;
+      canvas.height = 220;
+      drawGraph();
+    }
+    window.addEventListener("resize", resizeCanvas);
+
+    function drawLine(data, color) {
+      if (data.length < 2) return;
+      var step = canvas.width / (maxPoints - 1);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (var i = 0; i < data.length; i++) {
+        var x = i * step;
+        var y = canvas.height - (data[i] / 100.0) * canvas.height;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    function drawGraph() {
+      if (!canvas.width || !canvas.height) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+      ctx.lineWidth = 1;
+      for (var j = 0; j <= 4; j++) {
+        var y = (canvas.height / 4) * j;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      drawLine(tempData, "#ef4444");
+      drawLine(humData, "#38bdf8");
+      drawLine(lightData, "#eab308");
+    }
+
+    // Connect to EMQX Public WebSocket Broker over Secure WSS
+    var client = new Paho.MQTT.Client("broker.emqx.io", 8084, "/mqtt", "webClient_" + parseInt(Math.random() * 10000, 10));
+
+    client.onConnectionLost = function (response) {
+      document.getElementById("connStatus").innerText = "Disconnected. Retrying...";
+      document.getElementById("connStatus").className = "status";
+      setTimeout(connectMqtt, 3000);
+    };
+
+    client.onMessageArrived = function (message) {
+      try {
+        var d = JSON.parse(message.payloadString);
+        document.getElementById("temp").innerText = d.temperature.toFixed(1);
+        document.getElementById("hum").innerText = d.humidity.toFixed(1);
+        document.getElementById("press").innerText = d.pressure.toFixed(1);
+        document.getElementById("lux").innerText = d.light.toFixed(0);
+        document.getElementById("heat").innerText = d.heatIndex.toFixed(1);
+        document.getElementById("dew").innerText = d.dewPoint.toFixed(1);
+        document.getElementById("trend").innerText = d.trend;
+
+        if (tempData.length >= maxPoints) {
+          tempData.shift();
+          humData.shift();
+          lightData.shift();
+        }
+        tempData.push(d.temperature);
+        humData.push(d.humidity);
+        lightData.push(d.light / 10.0);
+
+        drawGraph();
+      } catch (e) {
+        console.error("Payload error:", e);
+      }
+    };
+
+    function connectMqtt() {
+      client.connect({
+        useSSL: true,
+        onSuccess: function () {
+          document.getElementById("connStatus").innerText = "● Cloud Connected (Streaming Live Telemetry)";
+          document.getElementById("connStatus").className = "status online";
+          client.subscribe(MQTT_TOPIC);
+        },
+        onFailure: function (e) {
+          document.getElementById("connStatus").innerText = "Connection Failed. Retrying...";
+          setTimeout(connectMqtt, 3000);
+        }
+      });
+    }
+
+    resizeCanvas();
+    connectMqtt();
+  </script>
+</body>
+</html>
