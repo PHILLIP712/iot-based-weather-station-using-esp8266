@@ -40,18 +40,22 @@ float uvIndex = 0.0;
 int weatherCode = 0;
 String conditionText = "Updating...";
 
-// Air Quality Telemetry Variables
+// Air Quality Variables
 int usAqi = 0;
 float pm2_5 = 0.0;
 float pm10 = 0.0;
 String aqiStatus = "Good";
 
+// Solar Ephemeris Variables
+String sunriseTime = "--:--";
+String sunsetTime = "--:--";
+float daylightHours = 0.0;
+
 // Timers
 unsigned long lastWeatherFetch = 0;
-const unsigned long weatherInterval = 30000; // API fetch every 30 seconds
-
+const unsigned long weatherInterval = 30000;
 unsigned long lastMqttPublish = 0;
-const unsigned long mqttInterval = 1000;     // 1-second real-time MQTT publish rate
+const unsigned long mqttInterval = 1000;
 
 String getWeatherDescription(int code) {
   switch (code) {
@@ -109,15 +113,17 @@ void fetchWeatherData() {
   clientSecure.setInsecure();
   HTTPClient https;
 
-  // Weather Endpoint
+  // Weather & Sun Ephemeris Endpoint
   String weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=" + String(latitude, 4) +
                       "&longitude=" + String(longitude, 4) +
-                      "&current=temperature_2m,relative_humidity_2m,apparent_temperature,surface_pressure,wind_speed_10m,wind_direction_10m,cloud_cover,uv_index,weather_code";
+                      "&current=temperature_2m,relative_humidity_2m,apparent_temperature,surface_pressure,wind_speed_10m,wind_direction_10m,cloud_cover,uv_index,weather_code" +
+                      "&daily=sunrise,sunset,daylight_duration&timezone=Asia%2FKolkata&forecast_days=1";
 
   if (https.begin(clientSecure, weatherUrl)) {
     if (https.GET() == HTTP_CODE_OK) {
-      DynamicJsonDocument doc(2048);
+      DynamicJsonDocument doc(3072);
       deserializeJson(doc, https.getString());
+      
       JsonObject current = doc["current"];
       temp = current["temperature_2m"];
       feelsLike = current["apparent_temperature"];
@@ -129,6 +135,13 @@ void fetchWeatherData() {
       uvIndex = current["uv_index"];
       weatherCode = current["weather_code"];
       conditionText = getWeatherDescription(weatherCode);
+
+      // Parse Sunrise / Sunset (e.g., "2026-08-16T05:22" -> "05:22")
+      String rawRise = doc["daily"]["sunrise"][0].as<String>();
+      String rawSet = doc["daily"]["sunset"][0].as<String>();
+      if (rawRise.length() >= 16) sunriseTime = rawRise.substring(11, 16);
+      if (rawSet.length() >= 16) sunsetTime = rawSet.substring(11, 16);
+      daylightHours = doc["daily"]["daylight_duration"][0].as<float>() / 3600.0;
     }
     https.end();
   }
@@ -165,7 +178,7 @@ void publishTelemetry() {
   char timeBuf[10], dateBuf[12];
   getFormattedTime(timeBuf, dateBuf);
 
-  DynamicJsonDocument doc(768);
+  DynamicJsonDocument doc(1024);
   doc["city"] = city;
   doc["country"] = country;
   doc["time"] = String(timeBuf) + " IST";
@@ -183,6 +196,9 @@ void publishTelemetry() {
   doc["aqi_status"] = aqiStatus;
   doc["pm2_5"] = pm2_5;
   doc["pm10"] = pm10;
+  doc["sunrise"] = sunriseTime;
+  doc["sunset"] = sunsetTime;
+  doc["daylight"] = daylightHours;
 
   String output;
   serializeJson(doc, output);
@@ -193,7 +209,6 @@ void reconnectMqtt() {
   if (!client.connected()) {
     String clientId = "ESP8266-Weather-" + String(random(0xffff), HEX);
     if (client.connect(clientId.c_str())) {
-      Serial.println("Connected to EMQX Broker!");
       publishTelemetry();
     }
   }
@@ -207,7 +222,6 @@ void setup() {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("\nWiFi Connected.");
 
   configTime(IST_OFFSET_SEC, DST_OFFSET_SEC, "pool.ntp.org", "time.google.com");
 
@@ -227,13 +241,13 @@ void loop() {
 
   unsigned long currentMillis = millis();
 
-  // 1. Publish to Cloud MQTT every 1 second
+  // 1-second real-time telemetry publish
   if (currentMillis - lastMqttPublish >= mqttInterval) {
     lastMqttPublish = currentMillis;
     publishTelemetry();
   }
 
-  // 2. Fetch fresh Open-Meteo updates every 30 seconds
+  // Periodic weather & sun updates
   if (currentMillis - lastWeatherFetch >= weatherInterval) {
     lastWeatherFetch = currentMillis;
     fetchWeatherData();
