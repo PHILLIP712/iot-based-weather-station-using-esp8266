@@ -47,7 +47,7 @@ struct DayForecast {
   String date;
   float maxTemp;
   float minTemp;
-  int pop; // Probability of precipitation %
+  int pop;
   int code;
   String condition;
 };
@@ -137,14 +137,12 @@ void fetchWeatherData() {
       weatherCode = current["weather_code"];
       conditionText = getWeatherDescription(weatherCode);
 
-      // Ephemeris
       String rawRise = doc["daily"]["sunrise"][0].as<String>();
       String rawSet = doc["daily"]["sunset"][0].as<String>();
       if (rawRise.length() >= 16) sunriseTime = rawRise.substring(11, 16);
       if (rawSet.length() >= 16) sunsetTime = rawSet.substring(11, 16);
       daylightHours = doc["daily"]["daylight_duration"][0].as<float>() / 3600.0;
 
-      // Parse 3-day forecast
       for (int i = 0; i < 3; i++) {
         forecast[i].date = doc["daily"]["time"][i].as<String>();
         forecast[i].maxTemp = doc["daily"]["temperature_2m_max"][i];
@@ -157,7 +155,6 @@ void fetchWeatherData() {
     https.end();
   }
 
-  // Air Quality
   String aqiUrl = "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=" + String(latitude, 4) +
                   "&longitude=" + String(longitude, 4) +
                   "&current=us_aqi,pm10,pm2_5";
@@ -211,7 +208,6 @@ void publishTelemetry() {
   doc["sunset"] = sunsetTime;
   doc["daylight"] = daylightHours;
 
-  // Append Forecast Array
   JsonArray fcArray = doc.createNestedArray("forecast");
   for (int i = 0; i < 3; i++) {
     JsonObject fc = fcArray.createNestedObject();
@@ -251,7 +247,7 @@ void setup() {
   fetchWeatherData();
 
   client.setServer(mqtt_server, mqtt_port);
-  client.setBufferSize(2048); // Extended for forecast payload
+  client.setBufferSize(2048);
   reconnectMqtt();
 }
 
