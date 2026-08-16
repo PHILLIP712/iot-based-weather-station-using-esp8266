@@ -5,7 +5,7 @@
 #include <ArduinoJson.h>
 #include <time.h>
 
-// Wi-Fi Credentials
+// Wi-Fi Configuration
 const char* ssid = "Infinix";
 const char* password = "1234567890";
 
@@ -18,7 +18,7 @@ const char* mqtt_topic = "arpan_weather_station/state";
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-// IST Timezone: UTC +5:30 (19800 seconds, 0 DST)
+// IST Timezone Offset: UTC +5:30 (19800 seconds, 0 DST)
 const long IST_OFFSET_SEC = 19800;
 const int DST_OFFSET_SEC = 0;
 
@@ -38,7 +38,7 @@ int usAqi = 0;
 float pm2_5 = 0.0, pm10 = 0.0;
 String aqiStatus = "Good";
 
-// Timers
+// Execution Timers
 unsigned long lastWeatherFetch = 0;
 const unsigned long weatherInterval = 30000;
 
