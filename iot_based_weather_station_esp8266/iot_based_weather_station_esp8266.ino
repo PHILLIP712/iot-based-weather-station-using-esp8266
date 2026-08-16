@@ -28,7 +28,7 @@ String country = "";
 float latitude = 0.0;
 float longitude = 0.0;
 
-// Meteorological Telemetry
+// Current Meteorological Telemetry
 float temp = 0.0, feelsLike = 0.0, pressure = 0.0, windSpeed = 0.0, uvIndex = 0.0;
 int humidity = 0, cloudCover = 0, weatherCode = 0;
 String conditionText = "Updating...";
@@ -37,26 +37,6 @@ String conditionText = "Updating...";
 int usAqi = 0;
 float pm2_5 = 0.0, pm10 = 0.0;
 String aqiStatus = "Good";
-
-// 7-Day Forecast Structure
-struct DayForecast {
-  String date;
-  float maxTemp;
-  float minTemp;
-  int pop;
-  int code;
-  String condition;
-};
-DayForecast forecast[7];
-
-// 24-Hour Hourly Timeline Structure
-struct HourForecast {
-  String time;
-  float temp;
-  int pop;
-  String condition;
-};
-HourForecast hourly[24];
 
 // Timers
 unsigned long lastWeatherFetch = 0;
@@ -123,21 +103,12 @@ void fetchWeatherData() {
 
   String weatherUrl = "https://api.open-meteo.com/v1/forecast?latitude=" + String(latitude, 4) +
                       "&longitude=" + String(longitude, 4) +
-                      "&current=temperature_2m,relative_humidity_2m,apparent_temperature,surface_pressure,wind_speed_10m,cloud_cover,uv_index,weather_code" +
-                      "&hourly=temperature_2m,precipitation_probability,weather_code" +
-                      "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=Asia%2FKolkata&forecast_days=7";
+                      "&current=temperature_2m,relative_humidity_2m,apparent_temperature,surface_pressure,wind_speed_10m,cloud_cover,uv_index,weather_code";
 
   if (https.begin(clientSecure, weatherUrl)) {
     if (https.GET() == HTTP_CODE_OK) {
-      // Memory filter to keep RAM clean
-      StaticJsonDocument<512> filter;
-      filter["current"] = true;
-      filter["daily"] = true;
-      filter["hourly"] = true;
-
-      DynamicJsonDocument doc(10240);
-      deserializeJson(doc, https.getString(), DeserializationOption::Filter(filter));
-      
+      DynamicJsonDocument doc(2048);
+      deserializeJson(doc, https.getString());
       JsonObject current = doc["current"];
       temp = current["temperature_2m"];
       feelsLike = current["apparent_temperature"];
@@ -148,32 +119,6 @@ void fetchWeatherData() {
       uvIndex = current["uv_index"];
       weatherCode = current["weather_code"];
       conditionText = getWeatherDescription(weatherCode);
-
-      // Parse 7-Day Forecast
-      for (int i = 0; i < 7; i++) {
-        forecast[i].date = doc["daily"]["time"][i].as<String>();
-        forecast[i].maxTemp = doc["daily"]["temperature_2m_max"][i].as<float>();
-        forecast[i].minTemp = doc["daily"]["temperature_2m_min"][i].as<float>();
-        forecast[i].pop = doc["daily"]["precipitation_probability_max"][i] | 0;
-        forecast[i].code = doc["daily"]["weather_code"][i] | 0;
-        forecast[i].condition = getWeatherDescription(forecast[i].code);
-      }
-
-      // Parse 24-Hour Timeline
-      time_t now = time(nullptr);
-      struct tm* timeinfo = localtime(&now);
-      int currentHour = (timeinfo->tm_hour >= 0 && timeinfo->tm_hour <= 23) ? timeinfo->tm_hour : 0;
-
-      for (int i = 0; i < 24; i++) {
-        int idx = currentHour + i;
-        if (idx < 168) {
-          String rawTime = doc["hourly"]["time"][idx].as<String>();
-          hourly[i].time = (rawTime.length() >= 16) ? rawTime.substring(11, 16) : String(idx % 24) + ":00";
-          hourly[i].temp = doc["hourly"]["temperature_2m"][idx].as<float>();
-          hourly[i].pop = doc["hourly"]["precipitation_probability"][idx] | 0;
-          hourly[i].condition = getWeatherDescription(doc["hourly"]["weather_code"][idx] | 0);
-        }
-      }
     }
     https.end();
   }
@@ -209,9 +154,11 @@ void publishTelemetry() {
   char timeBuf[10], dateBuf[12];
   getFormattedTime(timeBuf, dateBuf);
 
-  DynamicJsonDocument doc(4096);
+  DynamicJsonDocument doc(1024);
   doc["city"] = city;
   doc["country"] = country;
+  doc["lat"] = latitude;
+  doc["lon"] = longitude;
   doc["time"] = String(timeBuf) + " IST";
   doc["date"] = String(dateBuf);
   doc["temperature"] = temp;
@@ -226,27 +173,6 @@ void publishTelemetry() {
   doc["aqi_status"] = aqiStatus;
   doc["pm2_5"] = pm2_5;
   doc["pm10"] = pm10;
-
-  // 7-Day Forecast Array
-  JsonArray fcArray = doc.createNestedArray("forecast");
-  for (int i = 0; i < 7; i++) {
-    JsonObject fc = fcArray.createNestedObject();
-    fc["date"] = forecast[i].date;
-    fc["max"] = forecast[i].maxTemp;
-    fc["min"] = forecast[i].minTemp;
-    fc["pop"] = forecast[i].pop;
-    fc["cond"] = forecast[i].condition;
-  }
-
-  // 24-Hour Timeline Array
-  JsonArray hrArray = doc.createNestedArray("hourly");
-  for (int i = 0; i < 24; i++) {
-    JsonObject hr = hrArray.createNestedObject();
-    hr["time"] = hourly[i].time;
-    hr["temp"] = hourly[i].temp;
-    hr["pop"] = hourly[i].pop;
-    hr["cond"] = hourly[i].condition;
-  }
 
   String output;
   serializeJson(doc, output);
@@ -277,7 +203,7 @@ void setup() {
   fetchWeatherData();
 
   client.setServer(mqtt_server, mqtt_port);
-  client.setBufferSize(4096);
+  client.setBufferSize(1024);
   reconnectMqtt();
 }
 

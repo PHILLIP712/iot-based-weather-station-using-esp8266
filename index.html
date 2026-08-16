@@ -73,6 +73,7 @@
   </div>
   <div class="status" id="connStatus">Connecting to Cloud Broker...</div>
 
+  <!-- Real-Time Advisory Engine Banner -->
   <div class="advisory-box normal" id="advisoryCard">
     <div class="advisory-top">
       <span id="advisoryTitle">🛡️ Environmental Status: Optimal</span>
@@ -81,6 +82,7 @@
     <div class="advisory-msg" id="advisoryText">Atmospheric metrics within safe recreational thresholds.</div>
   </div>
 
+  <!-- 24-Hour Hourly Scroller -->
   <div class="hourly-container">
     <div class="hourly-title">
       <span>⏱️ 24-Hour Forecast Timeline</span>
@@ -91,8 +93,10 @@
     </div>
   </div>
 
+  <!-- 7-Day Forecast Section -->
   <div class="forecast-grid" id="forecastDeck"></div>
 
+  <!-- Core Metric Grid -->
   <div class="grid">
     <div class="card highlight"><div class="label">Condition</div><div class="value" style="font-size:1.05rem;" id="cond">--</div></div>
     <div class="card"><div class="label">Temperature</div><div class="value"><span id="temp">--</span><span class="unit">&deg;C</span></div></div>
@@ -108,6 +112,7 @@
     <div class="card"><div class="label">Cloud Cover</div><div class="value"><span id="clouds">--</span><span class="unit">%</span></div></div>
   </div>
 
+  <!-- Spline Chart -->
   <div class="chart-box">
     <div class="legend">
       <span><span class="dot" style="background:#f43f5e; box-shadow: 0 0 8px #f43f5e;"></span> Temp (°C)</span>
@@ -117,6 +122,7 @@
     <canvas id="splineCanvas"></canvas>
   </div>
 
+  <!-- Historical Logger & CSV Exporter -->
   <div class="action-bar">
     <span class="log-count" id="logCounter">0 telemetry frames logged</span>
     <button class="btn-export" onclick="exportHistoricalCSV()">📥 Download CSV Log</button>
@@ -128,6 +134,7 @@
     var tempData = [], humData = [], aqiData = [], timeLabels = [];
     var telemetryLog = [];
     var initialPressure = null;
+    var forecastLoaded = false;
 
     var canvas = document.getElementById("splineCanvas");
     var ctx = canvas.getContext("2d");
@@ -139,51 +146,75 @@
     }
     window.addEventListener("resize", resizeCanvas);
 
-    function renderHourly(hrArray) {
-      if (!hrArray || !hrArray.length) return;
-      var html = "";
-      for (var i = 0; i < hrArray.length; i++) {
-        var h = hrArray[i];
-        var isNow = (i === 0) ? " now" : "";
-        html += '<div class="hour-pill' + isNow + '">' +
-                '<div class="hour-time">' + (i === 0 ? "Now" : h.time) + '</div>' +
-                '<div class="hour-temp">' + Math.round(h.temp) + '&deg;</div>' +
-                '<div class="hour-pop">💧 ' + h.pop + '%</div>' +
-                '</div>';
-      }
-      document.getElementById("hourlyStrip").innerHTML = html;
+    function getWeatherDesc(code) {
+      var map = {
+        0: "Clear Sky", 1: "Mainly Clear", 2: "Partly Cloudy", 3: "Overcast",
+        45: "Foggy", 48: "Foggy", 51: "Drizzle", 53: "Drizzle", 55: "Drizzle",
+        61: "Rain", 63: "Rain", 65: "Heavy Rain", 71: "Snow", 80: "Rain Showers",
+        81: "Rain Showers", 82: "Rain Showers", 95: "Thunderstorm"
+      };
+      return map[code] || "Cloudy";
     }
 
-    function renderForecast(fcArray) {
-      if (!fcArray || !fcArray.length) return;
-      var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      var html = "";
-      for (var i = 0; i < fcArray.length; i++) {
-        var d = fcArray[i];
-        var dayLabel;
-        if (i === 0) {
-          dayLabel = "Today";
-        } else if (i === 1) {
-          dayLabel = "Tmrw";
-        } else {
-          // Safe local date parsing
-          var parts = (d.date || "").split("-");
-          if (parts.length === 3) {
-            var dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-            dayLabel = days[dt.getDay()];
-          } else {
-            dayLabel = "Day " + (i + 1);
-          }
-        }
+    // Direct Browser-Side API fetch for 100% Reliable 7-Day + 24H Timeline Forecast
+    function fetchDetailedForecast(lat, lon) {
+      if (forecastLoaded) return;
+      var url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat +
+                "&longitude=" + lon +
+                "&hourly=temperature_2m,precipitation_probability,weather_code" +
+                "&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&timezone=Asia%2FKolkata&forecast_days=7";
 
-        html += '<div class="fc-card">' +
-                '<div class="fc-date">' + dayLabel + '</div>' +
-                '<div class="fc-cond">' + (d.cond || "--") + '</div>' +
-                '<div class="fc-temp">' + Math.round(d.max) + '&deg; / ' + Math.round(d.min) + '&deg;</div>' +
-                '<div class="fc-pop">💧 ' + (d.pop || 0) + '%</div>' +
-                '</div>';
-      }
-      document.getElementById("forecastDeck").innerHTML = html;
+      fetch(url)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          forecastLoaded = true;
+
+          // Render 7-Day Forecast
+          var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+          var fcHtml = "";
+          for (var i = 0; i < data.daily.time.length; i++) {
+            var dateStr = data.daily.time[i];
+            var parts = dateStr.split("-");
+            var dt = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            var dayLabel = (i === 0) ? "Today" : (i === 1 ? "Tmrw" : days[dt.getDay()]);
+
+            var maxT = Math.round(data.daily.temperature_2m_max[i]);
+            var minT = Math.round(data.daily.temperature_2m_min[i]);
+            var pop = data.daily.precipitation_probability_max[i] || 0;
+            var cond = getWeatherDesc(data.daily.weather_code[i]);
+
+            fcHtml += '<div class="fc-card">' +
+                      '<div class="fc-date">' + dayLabel + '</div>' +
+                      '<div class="fc-cond">' + cond + '</div>' +
+                      '<div class="fc-temp">' + maxT + '&deg; / ' + minT + '&deg;</div>' +
+                      '<div class="fc-pop">💧 ' + pop + '%</div>' +
+                      '</div>';
+          }
+          document.getElementById("forecastDeck").innerHTML = fcHtml;
+
+          // Render 24-Hour Timeline starting at current hour
+          var currentHour = new Date().getHours();
+          var hrHtml = "";
+          for (var j = 0; j < 24; j++) {
+            var idx = currentHour + j;
+            if (idx < data.hourly.time.length) {
+              var timePart = data.hourly.time[idx].substring(11, 16);
+              var hTemp = Math.round(data.hourly.temperature_2m[idx]);
+              var hPop = data.hourly.precipitation_probability[idx] || 0;
+              var isNow = (j === 0) ? " now" : "";
+
+              hrHtml += '<div class="hour-pill' + isNow + '">' +
+                        '<div class="hour-time">' + (j === 0 ? "Now" : timePart) + '</div>' +
+                        '<div class="hour-temp">' + hTemp + '&deg;</div>' +
+                        '<div class="hour-pop">💧 ' + hPop + '%</div>' +
+                        '</div>';
+            }
+          }
+          document.getElementById("hourlyStrip").innerHTML = hrHtml;
+        })
+        .catch(function(err) {
+          console.error("Forecast fetch error:", err);
+        });
     }
 
     function calculateAltitude(p) {
@@ -399,9 +430,12 @@
           trendEl.style.color = "#38bdf8";
         }
 
-        if (d.forecast) renderForecast(d.forecast);
-        if (d.hourly) renderHourly(d.hourly);
         evaluateAdvisories(d);
+
+        // Fetch browser-side detailed forecast automatically when coordinates arrive
+        if (d.lat && d.lon) {
+          fetchDetailedForecast(d.lat, d.lon);
+        }
 
         telemetryLog.push(d);
         document.getElementById("logCounter").innerText = telemetryLog.length + " frames logged";
