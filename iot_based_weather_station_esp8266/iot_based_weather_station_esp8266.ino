@@ -215,13 +215,11 @@ void loop() {
 
   unsigned long currentMillis = millis();
 
-  // 1-second real-time telemetry stream
   if (currentMillis - lastMqttPublish >= mqttInterval) {
     lastMqttPublish = currentMillis;
     publishTelemetry();
   }
 
-  // Refresh weather API data every 30 seconds
   if (currentMillis - lastWeatherFetch >= weatherInterval) {
     lastWeatherFetch = currentMillis;
     fetchWeatherData();
